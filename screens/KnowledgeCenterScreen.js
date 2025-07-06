@@ -14,10 +14,11 @@ import {
   collection,
   query,
   getDocs,
-  updateDoc,
   doc,
+  getDoc,
+  updateDoc,
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 
 export default function KnowledgeCenterScreen() {
   const [data, setData] = useState([]);
@@ -26,6 +27,19 @@ export default function KnowledgeCenterScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedTab, setSelectedTab] = useState('all');
+  const [bookmarkedIds, setBookmarkedIds] = useState([]);
+
+  const fetchBookmarks = async () => {
+    try {
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        setBookmarkedIds(userSnap.data()?.bookmarkedItems || []);
+      }
+    } catch (error) {
+      console.error('Failed to load bookmarks:', error);
+    }
+  };
 
   const fetchData = async () => {
     try {
@@ -36,7 +50,7 @@ export default function KnowledgeCenterScreen() {
         ...doc.data(),
       }));
       setData(list);
-      setFiltered(list);
+      filterByTabAndSearch(list, selectedTab, search);
     } catch (err) {
       console.error('Fetch error:', err);
       Alert.alert('Error', 'Failed to load knowledge center data.');
@@ -46,40 +60,53 @@ export default function KnowledgeCenterScreen() {
     }
   };
 
+  const filterByTabAndSearch = (source, tab, searchText) => {
+    let list = [...source];
+    if (tab !== 'all') {
+      list = list.filter(item => item.type === tab);
+    }
+    if (searchText) {
+      list = list.filter(item =>
+        item.title.toLowerCase().includes(searchText.toLowerCase())
+      );
+    }
+    setFiltered(list);
+  };
+
   useEffect(() => {
     fetchData();
+    fetchBookmarks();
   }, []);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchData();
+    fetchBookmarks();
   }, []);
 
   const handleSearch = (text) => {
     setSearch(text);
-    const filteredList = data.filter(item =>
-      item.title.toLowerCase().includes(text.toLowerCase())
-    );
-    setFiltered(filteredList);
+    filterByTabAndSearch(data, selectedTab, text);
   };
 
   const handleTabChange = (tab) => {
     setSelectedTab(tab);
-    if (tab === 'all') {
-      setFiltered(data);
-    } else {
-      const filteredList = data.filter(item => item.type === tab);
-      setFiltered(filteredList);
-    }
+    filterByTabAndSearch(data, tab, search);
   };
 
-  const toggleBookmark = async (item) => {
+  const toggleBookmark = async (itemId) => {
     try {
-      const updated = !item.bookmarked;
-      await updateDoc(doc(db, 'knowledgeCenter', item.id), {
-        bookmarked: updated,
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const alreadyBookmarked = bookmarkedIds.includes(itemId);
+
+      const updated = alreadyBookmarked
+        ? bookmarkedIds.filter(id => id !== itemId)
+        : [...bookmarkedIds, itemId];
+
+      await updateDoc(userRef, {
+        bookmarkedItems: updated,
       });
-      fetchData();
+      setBookmarkedIds(updated);
     } catch (err) {
       console.error('Bookmark toggle failed:', err);
       Alert.alert('Error', 'Failed to update bookmark.');
@@ -103,10 +130,10 @@ export default function KnowledgeCenterScreen() {
     <View style={styles.card}>
       <View style={styles.cardTop}>
         <Text style={styles.title}>{item.title}</Text>
-        <TouchableOpacity onPress={() => toggleBookmark(item)}>
+        <TouchableOpacity onPress={() => toggleBookmark(item.id)}>
           <Feather
-            name={item.bookmarked ? 'bookmark' : 'bookmark'}
-            color={item.bookmarked ? '#007bff' : '#888'}
+            name={bookmarkedIds.includes(item.id) ? 'bookmark' : 'bookmark'}
+            color={bookmarkedIds.includes(item.id) ? '#007bff' : '#888'}
             size={20}
           />
         </TouchableOpacity>

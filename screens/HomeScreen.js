@@ -1,119 +1,124 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
 import ExpandableSection from '../components/ExpandableSection';
 
 export default function HomeScreen({ navigation }) {
   const [todayVisits, setTodayVisits] = useState([]);
+  const [weekVisits, setWeekVisits] = useState([]);
+  const [monthVisits, setMonthVisits] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const fetchVisits = async () => {
-      try {
-        const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10);
-        const userId = auth.currentUser?.uid;
-
-        if (!userId) return;
-
-        const visitsRef = collection(db, 'visits');
-        const q = query(
-          visitsRef,
-          where('userId', '==', userId),
-          where('date', '==', todayStr)
-        );
-
-        const snapshot = await getDocs(q);
-        const visits = snapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
-        setTodayVisits(visits);
-      } catch (error) {
-        console.error('Error fetching visits:', error.message);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchVisits();
-  }, []);
-
-  const handleLogout = async () => {
+  const fetchVisits = async () => {
     try {
-      await signOut(auth);
+      const today = new Date();
+      const todayStr = today.toISOString().slice(0, 10);
+      const startOfWeek = new Date(today);
+      startOfWeek.setDate(today.getDate() - today.getDay());
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+
+      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+
+      const userId = auth.currentUser?.uid;
+      if (!userId) return;
+
+      const visitsRef = collection(db, 'visits');
+      const snapshot = await getDocs(query(visitsRef, where('userId', '==', userId)));
+      const allVisits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+      const filterByDate = (dateStr, start, end) => {
+        const date = new Date(dateStr);
+        return date >= start && date <= end;
+      };
+
+      setTodayVisits(allVisits.filter(v => v.date === todayStr));
+      setWeekVisits(allVisits.filter(v => filterByDate(v.date, startOfWeek, endOfWeek)));
+      setMonthVisits(allVisits.filter(v => filterByDate(v.date, startOfMonth, endOfMonth)));
     } catch (error) {
-      console.log('Logout error:', error);
+      console.error('Error fetching visits:', error.message);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  return (
-    <ScrollView contentContainerStyle={styles.container}>
+  useEffect(() => {
+    fetchVisits();
+  }, []);
 
-      <Text style={styles.title}>Visits overview</Text>
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchVisits();
+  }, []);
+
+  const renderVisitList = (visits) =>
+    visits.map((v) => (
+      <TouchableOpacity
+        key={v.id}
+        onPress={() => navigation.navigate('VisitSummary', { visitData: v })}
+      >
+        <Text style={styles.visitItem}>• {v.contactName} ({v.status})</Text>
+      </TouchableOpacity>
+    ));
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+    >
+      <Text style={styles.title}>Visits Overview</Text>
 
       {loading ? (
-        <Text>Loading visits...</Text>
+        <View style={styles.center}>
+          <ActivityIndicator size="large" color="#007bff" />
+          <Text style={styles.loadingText}>Loading visits...</Text>
+        </View>
       ) : (
-        <ExpandableSection title="Today’s Visits">
-          {todayVisits.length > 0 ? (
-            todayVisits.map((v) => (
-              <TouchableOpacity
-                key={v.id}
-                onPress={() =>
-                  navigation.navigate('VisitDetails', { visitData: v })
-                }
-              >
-                <Text style={styles.visitItem}>
-                  • {v.contactName} ({v.status})
-                </Text>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <Text>No visits planned today.</Text>
-          )}
-        </ExpandableSection>
+        <>
+          <ExpandableSection title={`Today’s Visits (${todayVisits.length})`}>
+            {todayVisits.length ? renderVisitList(todayVisits) : <Text style={styles.emptyText}>No visits today.</Text>}
+          </ExpandableSection>
+
+          <ExpandableSection title={`This Week’s Plan (${weekVisits.length})`}>
+            {weekVisits.length ? renderVisitList(weekVisits) : <Text style={styles.emptyText}>No visits this week.</Text>}
+          </ExpandableSection>
+
+          <ExpandableSection title={`This Month’s Plan (${monthVisits.length})`}>
+            {monthVisits.length ? renderVisitList(monthVisits) : <Text style={styles.emptyText}>No visits this month.</Text>}
+          </ExpandableSection>
+        </>
       )}
 
-      <ExpandableSection title="This Week’s Plan">
-        <Text>🔜 Coming soon</Text>
-      </ExpandableSection>
+      <View style={styles.quickActionsContainer}>
+        <Text style={styles.quickActionsTitle}>Quick Actions</Text>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#28a745' }]}
+            onPress={() => navigation.navigate('VisitDetails')}
+          >
+            <Text style={styles.actionText}>➕ New Visit</Text>
+          </TouchableOpacity>
 
-      <ExpandableSection title="This Month’s Plan">
-        <Text>🔜 Coming soon</Text>
-      </ExpandableSection>
-
-      {/* New Visit button added here */}
-      <TouchableOpacity
-        style={styles.newVisitButton}
-        onPress={() => navigation.navigate('VisitDetails')}
-      >
-        <Text style={styles.newVisitButtonText}>➕ New Visit</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.mapButton}
-        onPress={() => navigation.navigate('Map')}
-      >
-        <Text style={styles.mapButtonText}>📍Show POI Map</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        onPress={handleLogout}
-        style={styles.logoutButton}
-      >
-        <Text style={styles.logoutText}>Logout</Text>
-      </TouchableOpacity>
-
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#007bff' }]}
+            onPress={() => navigation.navigate('Map')}
+          >
+            <Text style={styles.actionText}>📍Show POI Map</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
     </ScrollView>
   );
 }
@@ -129,48 +134,47 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
     marginBottom: 12,
-    textAlign: 'left',
   },
-  mapButton: {
-    marginTop: 10,
-    backgroundColor: '#007bff',
-    padding: 12,
-    borderRadius: 8,
+  center: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginTop: 30,
   },
-  mapButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#555',
+  },
+  emptyText: {
+    color: 'gray',
     fontSize: 15,
+    marginVertical: 8,
   },
   visitItem: {
     paddingVertical: 6,
     color: '#007bff',
   },
-  newVisitButton: {
-    backgroundColor: '#28a745',
+  quickActionsContainer: {
+    marginTop: 30,
+  },
+  quickActionsTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  actionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  actionButton: {
+    flex: 1,
     padding: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginBottom: 12,
   },
-  newVisitButtonText: {
+  actionText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
-  },
-  logoutButton: {
-    marginTop: 20,
-    padding: 10,
-    borderWidth: 1,
-    borderColor: '#dc3545',
-    borderRadius: 8,
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  logoutText: {
-    color: '#dc3545',
-    fontWeight: 'bold',
+    fontSize: 15,
   },
 });

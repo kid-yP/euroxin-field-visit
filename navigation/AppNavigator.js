@@ -4,17 +4,18 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 
-// Import your screens here
+// Screens import
 import HomeScreen from '../screens/HomeScreen';
 import StockScreen from '../screens/StockScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import VisitDetailsScreen from '../screens/VisitDetailsScreen';
+import VisitSummaryScreen from '../screens/VisitSummaryScreen';  // <-- import here
 import MapScreen from '../screens/MapScreen';
 import POIDetailsScreen from '../screens/POIDetailsScreen';
 import EditVisitScreen from '../screens/EditVisitScreen';
 import TaskListScreen from '../screens/TaskListScreen';
 import TaskDetailsScreen from '../screens/TaskDetailsScreen';
-import KnowledgeCenterScreen from '../screens/KnowledgeCenterScreen';  
+import KnowledgeCenterScreen from '../screens/KnowledgeCenterScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -39,8 +40,8 @@ function Tabs() {
             case 'Profile':
               iconName = 'user';
               break;
-            case 'KnowledgeCenter':    
-              iconName = 'book';      
+            case 'KnowledgeCenter':
+              iconName = 'book';
               break;
             default:
               iconName = 'circle';
@@ -66,6 +67,11 @@ export default function AppNavigator() {
     <Stack.Navigator>
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen name="VisitDetails" component={VisitDetailsScreen} options={{ title: 'Visit' }} />
+      <Stack.Screen
+        name="VisitSummary"
+        component={VisitSummaryScreen}
+        options={{ title: 'Visit Summary' }}
+      />
       <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
       <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
       <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
