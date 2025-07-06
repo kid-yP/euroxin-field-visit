@@ -1,111 +1,108 @@
-// EditVisit.js
-import React, { useState } from 'react';
+// screens/VisitListScreen.js
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View,
   Text,
-  TextInput,
+  FlatList,
   TouchableOpacity,
+  ActivityIndicator,
   StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
+  RefreshControl,
 } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { collection, query, where, getDocs } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
 
-export default function EditVisit({ route, navigation }) {
-  const { visit } = route.params;
+export default function VisitListScreen({ navigation }) {
+  const [visits, setVisits] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [contactName, setContactName] = useState(visit.contactName || '');
-  const [notes, setNotes] = useState(visit.notes || '');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    setSaving(true);
+  const fetchVisits = async () => {
     try {
-      const visitDocRef = doc(db, 'visits', visit.id);
-      await updateDoc(visitDocRef, {
-        contactName,
-        notes,
-      });
-      Alert.alert('Success', 'Visit updated successfully.');
-      navigation.goBack();
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update visit.');
-      console.error('Update visit error:', error);
+      const userId = auth.currentUser?.uid;
+      if (!userId) return;
+
+      // Example: Fetch visits for today (assuming you store a 'date' field as Firestore Timestamp)
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(today.getDate() + 1);
+
+      const visitsQuery = query(
+        collection(db, 'visits'),
+        where('userId', '==', userId),
+        where('date', '>=', today),
+        where('date', '<', tomorrow)
+      );
+
+      const snapshot = await getDocs(visitsQuery);
+      const visitList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      setVisits(visitList);
+    } catch (err) {
+      console.error('Error fetching visits:', err);
     } finally {
-      setSaving(false);
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+  useEffect(() => {
+    fetchVisits();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchVisits();
+  }, []);
+
+  const renderItem = ({ item }) => (
+    <TouchableOpacity
+      style={styles.visitCard}
+      onPress={() => navigation.navigate('EditVisit', { visit: item })}
     >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.label}>Contact Name</Text>
-        <TextInput
-          style={styles.input}
-          value={contactName}
-          onChangeText={setContactName}
-          placeholder="Enter contact name"
-          returnKeyType="done"
-        />
+      <Text style={styles.visitTitle}>{item.contactName || 'No Contact Name'}</Text>
+      <Text style={styles.visitNotes} numberOfLines={2}>
+        {item.notes || 'No notes available'}
+      </Text>
+      <Text style={styles.visitDate}>
+        {item.date?.toDate ? item.date.toDate().toLocaleString() : 'No date'}
+      </Text>
+    </TouchableOpacity>
+  );
 
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.notesInput]}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Add notes about this visit"
-          multiline
-          textAlignVertical="top"
-          returnKeyType="default"
-        />
+  return (
+    <View style={styles.container}>
+      <Text style={styles.heading}>Today's Visits</Text>
 
-        <TouchableOpacity
-          style={[styles.button, { backgroundColor: '#28a745' }]}
-          onPress={handleSave}
-          disabled={saving}
-        >
-          <Text style={styles.buttonText}>{saving ? 'Saving...' : 'Save'}</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      {loading ? (
+        <ActivityIndicator size="large" color="#007bff" />
+      ) : visits.length === 0 ? (
+        <Text style={styles.emptyText}>No visits for today.</Text>
+      ) : (
+        <FlatList
+          data={visits}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#fff',
-  },
-  label: {
-    fontWeight: 'bold',
-    marginBottom: 6,
-    fontSize: 16,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
-  },
-  notesInput: {
-    height: 120,
-  },
-  button: {
+  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
+  heading: { fontSize: 22, fontWeight: 'bold', marginBottom: 16, marginTop: 26 },
+  visitCard: {
+    backgroundColor: '#f9f9f9',
     padding: 16,
     borderRadius: 10,
-    alignItems: 'center',
+    marginBottom: 12,
+    borderColor: '#ddd',
+    borderWidth: 1,
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  visitTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
+  visitNotes: { fontSize: 14, color: '#555' },
+  visitDate: { fontSize: 12, color: '#999', marginTop: 6 },
+  emptyText: { textAlign: 'center', marginTop: 40, fontSize: 16, color: 'gray' },
 });

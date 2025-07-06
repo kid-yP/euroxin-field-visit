@@ -1,19 +1,20 @@
+// navigation/AppNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 
-// Screens
+// Import your screens here
 import HomeScreen from '../screens/HomeScreen';
-import TrainingScreen from '../screens/TrainingScreen';
 import StockScreen from '../screens/StockScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import VisitDetailsScreen from '../screens/VisitDetailsScreen';
 import MapScreen from '../screens/MapScreen';
 import POIDetailsScreen from '../screens/POIDetailsScreen';
-import EditVisitScreen from '../screens/EditVisitScreen'; 
-
-const TasksScreen = () => <></>;
+import EditVisitScreen from '../screens/EditVisitScreen';
+import TaskListScreen from '../screens/TaskListScreen';
+import TaskDetailsScreen from '../screens/TaskDetailsScreen';
+import KnowledgeCenterScreen from '../screens/KnowledgeCenterScreen';  
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -29,9 +30,6 @@ function Tabs() {
             case 'Home':
               iconName = 'home';
               break;
-            case 'Training':
-              iconName = 'book-open';
-              break;
             case 'Tasks':
               iconName = 'check-square';
               break;
@@ -40,6 +38,9 @@ function Tabs() {
               break;
             case 'Profile':
               iconName = 'user';
+              break;
+            case 'KnowledgeCenter':    
+              iconName = 'book';      
               break;
             default:
               iconName = 'circle';
@@ -52,9 +53,9 @@ function Tabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="Tasks" component={TasksScreen} />
-      <Tab.Screen name="Training" component={TrainingScreen} />
+      <Tab.Screen name="Tasks" component={TaskListScreen} />
       <Tab.Screen name="Stock" component={StockScreen} />
+      <Tab.Screen name="KnowledgeCenter" component={KnowledgeCenterScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -68,7 +69,7 @@ export default function AppNavigator() {
       <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
       <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
       <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
+      <Stack.Screen name="TaskDetails" component={TaskDetailsScreen} options={{ title: 'Task' }} />
     </Stack.Navigator>
   );
 }
-
