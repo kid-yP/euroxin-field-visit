@@ -42,7 +42,6 @@ export default function POIDetailsScreen({ route, navigation }) {
   const [loadingVisit, setLoadingVisit] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  // New state to show summary modal after checkout
   const [showSummary, setShowSummary] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
 
@@ -142,7 +141,6 @@ export default function POIDetailsScreen({ route, navigation }) {
       }
 
       const location = await Location.getCurrentPositionAsync({});
-
       await performCheckout(location);
     } catch (error) {
       console.error('Checkout location error:', error);
@@ -155,7 +153,6 @@ export default function POIDetailsScreen({ route, navigation }) {
   const performCheckout = async (location) => {
     try {
       const visitDocRef = doc(db, 'visits', lastVisit.id);
-
       await updateDoc(visitDocRef, {
         checkoutTime: serverTimestamp(),
         status: 'completed',
@@ -185,10 +182,7 @@ export default function POIDetailsScreen({ route, navigation }) {
         checkoutTime: new Date(),
       }));
 
-      setShowSummary(true); // Show summary modal
-
-      // Remove alert, we now show modal instead
-      // Alert.alert('Success', 'Checked out successfully!');
+      setShowSummary(true);
     } catch (error) {
       console.error('Checkout error:', error);
       Alert.alert('Error', `Failed to check out.\n${error.message}`);
@@ -262,40 +256,51 @@ export default function POIDetailsScreen({ route, navigation }) {
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Summary Modal */}
-      <Modal
-        visible={showSummary}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowSummary(false)}
-      >
-        <View style={styles.modalBackground}>
-          <View style={styles.summaryBox}>
-            <Text style={styles.summaryTitle}>Visit Summary</Text>
-            {summaryData && (
+      {/* Visit Summary Modal */}
+      <Modal visible={showSummary} transparent animationType="slide">
+        <View style={styles.modalOverlay}>
+          <View style={styles.summaryModal}>
+            <Text style={styles.modalTitle}>Visit Summary</Text>
+
+            {summaryData ? (
               <>
-                <Text>📍 Distance from check-in: {summaryData.distance} meters</Text>
-                <Text>🕒 Check-in Time: {summaryData.checkInTime.toLocaleTimeString()}</Text>
-                <Text>⏱️ Duration: {summaryData.duration} minutes</Text>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.label}>📍 Distance Moved</Text>
+                  <Text style={styles.value}>{summaryData.distance} meters</Text>
+                </View>
+
+                <View style={styles.summaryItem}>
+                  <Text style={styles.label}>🕒 Check-in Time</Text>
+                  <Text style={styles.value}>
+                    {new Date(summaryData.checkInTime).toLocaleTimeString()}
+                  </Text>
+                </View>
+
+                <View style={styles.summaryItem}>
+                  <Text style={styles.label}>⏱️ Duration</Text>
+                  <Text style={styles.value}>{summaryData.duration} minutes</Text>
+                </View>
+
+                <TouchableOpacity
+                  style={[styles.button, { backgroundColor: '#28a745', marginTop: 18 }]}
+                  onPress={() => setShowSummary(false)}
+                >
+                  <Text style={styles.buttonText}>✅ Confirm</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.editButton}
+                  onPress={() => {
+                    setShowSummary(false);
+                    navigation.navigate('EditVisit', { visit: lastVisit });
+                  }}
+                >
+                  <Text style={styles.editButtonText}>✏️ Edit Info</Text>
+                </TouchableOpacity>
               </>
+            ) : (
+              <Text>Loading summary...</Text>
             )}
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: '#28a745', marginTop: 14 }]}
-              onPress={() => setShowSummary(false)}
-            >
-              <Text style={styles.buttonText}>✅ Confirm</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: '#ffc107', marginTop: 10 }]}
-              onPress={() => {
-                setShowSummary(false);
-                navigation.navigate('EditVisit', { visit: lastVisit });
-              }}
-            >
-              <Text style={styles.buttonText}>✏️ Edit Info</Text>
-            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -304,14 +309,8 @@ export default function POIDetailsScreen({ route, navigation }) {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-  },
-  title: {
-    fontSize: 26,
-    fontWeight: 'bold',
-    marginBottom: 12,
-  },
+  container: { padding: 20 },
+  title: { fontSize: 26, fontWeight: 'bold', marginBottom: 12 },
   infoBox: {
     backgroundColor: '#f5f5f5',
     borderRadius: 8,
@@ -331,9 +330,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexWrap: 'wrap',
   },
-  lastVisitBox: {
-    marginBottom: 30,
-  },
+  lastVisitBox: { marginBottom: 30 },
   sectionTitle: {
     fontWeight: 'bold',
     fontSize: 18,
@@ -349,24 +346,51 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  modalBackground: {
+  modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
+    backgroundColor: 'rgba(0,0,0,0.4)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  summaryBox: {
-    backgroundColor: '#fff3cd',
-    borderRadius: 10,
-    padding: 20,
+  summaryModal: {
+    backgroundColor: 'white',
+    padding: 24,
+    borderRadius: 12,
     width: '85%',
-    borderColor: '#ffeeba',
+    elevation: 4,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 14,
+    textAlign: 'center',
+  },
+  summaryItem: {
+    backgroundColor: '#f5f5f5',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  label: {
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  value: {
+    fontSize: 16,
+    color: '#555',
+  },
+  editButton: {
+    marginTop: 12,
+    padding: 14,
+    backgroundColor: '#fff',
     borderWidth: 1,
+    borderColor: '#007bff',
+    borderRadius: 8,
     alignItems: 'center',
   },
-  summaryTitle: {
-    fontWeight: 'bold',
-    fontSize: 20,
-    marginBottom: 10,
+  editButtonText: {
+    color: '#007bff',
+    fontWeight: '600',
   },
 });

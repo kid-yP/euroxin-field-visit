@@ -1,108 +1,153 @@
-// screens/VisitListScreen.js
-import React, { useEffect, useState, useCallback } from 'react';
+// screens/EditVisitScreen.js
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
   StyleSheet,
-  RefreshControl,
+  TextInput,
+  TouchableOpacity,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
-import { collection, query, where, getDocs } from 'firebase/firestore';
-import { auth, db } from '../firebase/config';
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
-export default function VisitListScreen({ navigation }) {
-  const [visits, setVisits] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+export default function EditVisitScreen({ route, navigation }) {
+  const { visit } = route.params;
 
-  const fetchVisits = async () => {
+  // Assume visit has: checkInLocation (lat,lng), timestamp (check-in), checkoutTime (Date or timestamp), notes
+  const [notes, setNotes] = useState(visit.notes || '');
+
+  // Format check-in time nicely
+  const checkInTime = visit.timestamp?.toDate ? visit.timestamp.toDate() : new Date();
+  const checkOutTime = visit.checkoutTime?.toDate ? visit.checkoutTime.toDate() : new Date();
+
+  // Calculate duration in minutes
+  const durationMinutes = Math.floor((checkOutTime - checkInTime) / 60000);
+
+  // Location display - if you have a name, show that; else lat/lng
+  const locationText =
+    visit.poiName ||
+    (visit.checkInLocation
+      ? `Lat: ${visit.checkInLocation.latitude.toFixed(5)}, Lng: ${visit.checkInLocation.longitude.toFixed(5)}`
+      : 'Unknown Location');
+
+  const handleSubmit = async () => {
     try {
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
+      const visitRef = doc(db, 'visits', visit.id);
+      await updateDoc(visitRef, { notes });
 
-      // Example: Fetch visits for today (assuming you store a 'date' field as Firestore Timestamp)
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const tomorrow = new Date(today);
-      tomorrow.setDate(today.getDate() + 1);
-
-      const visitsQuery = query(
-        collection(db, 'visits'),
-        where('userId', '==', userId),
-        where('date', '>=', today),
-        where('date', '<', tomorrow)
-      );
-
-      const snapshot = await getDocs(visitsQuery);
-      const visitList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setVisits(visitList);
-    } catch (err) {
-      console.error('Error fetching visits:', err);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      Alert.alert('Success', 'Visit updated successfully.', [
+        { text: 'OK', onPress: () => navigation.goBack() },
+      ]);
+    } catch (error) {
+      Alert.alert('Error', `Failed to update visit: ${error.message}`);
     }
   };
 
-  useEffect(() => {
-    fetchVisits();
-  }, []);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchVisits();
-  }, []);
-
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.visitCard}
-      onPress={() => navigation.navigate('EditVisit', { visit: item })}
-    >
-      <Text style={styles.visitTitle}>{item.contactName || 'No Contact Name'}</Text>
-      <Text style={styles.visitNotes} numberOfLines={2}>
-        {item.notes || 'No notes available'}
-      </Text>
-      <Text style={styles.visitDate}>
-        {item.date?.toDate ? item.date.toDate().toLocaleString() : 'No date'}
-      </Text>
-    </TouchableOpacity>
-  );
-
   return (
-    <View style={styles.container}>
-      <Text style={styles.heading}>Today's Visits</Text>
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      style={{ flex: 1 }}
+    >
+      <ScrollView contentContainerStyle={styles.container}>
+        <Text style={styles.heading}>Visit Summary</Text>
 
-      {loading ? (
-        <ActivityIndicator size="large" color="#007bff" />
-      ) : visits.length === 0 ? (
-        <Text style={styles.emptyText}>No visits for today.</Text>
-      ) : (
-        <FlatList
-          data={visits}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        <View style={styles.summaryBox}>
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Location:</Text>
+            <Text style={styles.value}>{locationText}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Check-in Time:</Text>
+            <Text style={styles.value}>{checkInTime.toLocaleString()}</Text>
+          </View>
+
+          <View style={styles.summaryRow}>
+            <Text style={styles.label}>Total Duration:</Text>
+            <Text style={styles.value}>{durationMinutes} minutes</Text>
+          </View>
+        </View>
+
+        <Text style={styles.notesLabel}>Notes (optional):</Text>
+        <TextInput
+          style={styles.textInput}
+          multiline
+          placeholder="Add any notes here..."
+          value={notes}
+          onChangeText={setNotes}
+          textAlignVertical="top"
         />
-      )}
-    </View>
+
+        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
+          <Text style={styles.submitButtonText}>Confirm & Submit Visit</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: '#fff' },
-  heading: { fontSize: 22, fontWeight: 'bold', marginBottom: 16, marginTop: 26 },
-  visitCard: {
-    backgroundColor: '#f9f9f9',
-    padding: 16,
-    borderRadius: 10,
-    marginBottom: 12,
-    borderColor: '#ddd',
-    borderWidth: 1,
+  container: {
+    padding: 20,
+    paddingBottom: 40,
+    backgroundColor: '#fff',
   },
-  visitTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 4 },
-  visitNotes: { fontSize: 14, color: '#555' },
-  visitDate: { fontSize: 12, color: '#999', marginTop: 6 },
-  emptyText: { textAlign: 'center', marginTop: 40, fontSize: 16, color: 'gray' },
+  heading: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    color: '#007bff',
+  },
+  summaryBox: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 10,
+    padding: 15,
+    marginBottom: 30,
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  label: {
+    fontWeight: 'bold',
+    width: 120,
+    color: '#333',
+  },
+  value: {
+    flex: 1,
+    color: '#555',
+  },
+  notesLabel: {
+    fontWeight: 'bold',
+    marginBottom: 8,
+    fontSize: 16,
+    color: '#007bff',
+  },
+  textInput: {
+    height: 120,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    marginBottom: 30,
+    backgroundColor: '#fff',
+  },
+  submitButton: {
+    backgroundColor: '#28a745',
+    paddingVertical: 16,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
 });
