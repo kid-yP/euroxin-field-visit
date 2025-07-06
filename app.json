@@ -1,4 +1,12 @@
 {
+  "plugins": [
+  [
+    "expo-image-picker",
+    {
+      "photosPermission": "Allow this app to access your photos."
+    }
+  ]
+],
   "expo": {
     "name": "euroxin-field-visit",
     "slug": "euroxin-field-visit",

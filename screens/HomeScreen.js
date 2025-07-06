@@ -1,5 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Button, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { signOut } from 'firebase/auth';
 import { auth, db } from '../firebase/config';
 import { collection, query, where, getDocs } from 'firebase/firestore';
@@ -13,18 +19,11 @@ export default function HomeScreen({ navigation }) {
     const fetchVisits = async () => {
       try {
         const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10); // "YYYY-MM-DD"
+        const todayStr = today.toISOString().slice(0, 10);
         const userId = auth.currentUser?.uid;
 
-        console.log('📅 Today String:', todayStr);
-        console.log('👤 Auth UID:', userId);
+        if (!userId) return;
 
-        if (!userId) {
-          console.warn("No logged-in user.");
-          return;
-        }
-
-        // Query for today's visits for the current user
         const visitsRef = collection(db, 'visits');
         const q = query(
           visitsRef,
@@ -33,13 +32,14 @@ export default function HomeScreen({ navigation }) {
         );
 
         const snapshot = await getDocs(q);
-        const visits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-        console.log("✅ Visits Retrieved:", visits);
+        const visits = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
 
         setTodayVisits(visits);
       } catch (error) {
-        console.error("Error fetching visits:", error.message);
+        console.error('Error fetching visits:', error.message);
       } finally {
         setLoading(false);
       }
@@ -58,7 +58,8 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.title}>Dashboard</Text>
+
+      <Text style={styles.title}>Visits overview</Text>
 
       {loading ? (
         <Text>Loading visits...</Text>
@@ -66,7 +67,16 @@ export default function HomeScreen({ navigation }) {
         <ExpandableSection title="Today’s Visits">
           {todayVisits.length > 0 ? (
             todayVisits.map((v) => (
-              <Text key={v.id}>• {v.contactName} ({v.status})</Text>
+              <TouchableOpacity
+                key={v.id}
+                onPress={() =>
+                  navigation.navigate('VisitDetails', { visitData: v })
+                }
+              >
+                <Text style={styles.visitItem}>
+                  • {v.contactName} ({v.status})
+                </Text>
+              </TouchableOpacity>
             ))
           ) : (
             <Text>No visits planned today.</Text>
@@ -82,11 +92,28 @@ export default function HomeScreen({ navigation }) {
         <Text>🔜 Coming soon</Text>
       </ExpandableSection>
 
-      <Button title="Visit Details" onPress={() => navigation.navigate('VisitDetails')} />
+      {/* New Visit button added here */}
+      <TouchableOpacity
+        style={styles.newVisitButton}
+        onPress={() => navigation.navigate('VisitDetails')}
+      >
+        <Text style={styles.newVisitButtonText}>➕ New Visit</Text>
+      </TouchableOpacity>
 
-      <View style={{ marginTop: 30 }}>
-        <Button title="Logout" onPress={handleLogout} />
-      </View>
+      <TouchableOpacity
+        style={styles.mapButton}
+        onPress={() => navigation.navigate('Map')}
+      >
+        <Text style={styles.mapButtonText}>📍Show POI Map</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={handleLogout}
+        style={styles.logoutButton}
+      >
+        <Text style={styles.logoutText}>Logout</Text>
+      </TouchableOpacity>
+
     </ScrollView>
   );
 }
@@ -99,9 +126,51 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
+    marginBottom: 12,
+    textAlign: 'left',
+  },
+  mapButton: {
+    marginTop: 10,
+    backgroundColor: '#007bff',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  mapButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 15,
+  },
+  visitItem: {
+    paddingVertical: 6,
+    color: '#007bff',
+  },
+  newVisitButton: {
+    backgroundColor: '#28a745',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  newVisitButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  logoutButton: {
+    marginTop: 20,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    borderRadius: 8,
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  logoutText: {
+    color: '#dc3545',
+    fontWeight: 'bold',
   },
 });
