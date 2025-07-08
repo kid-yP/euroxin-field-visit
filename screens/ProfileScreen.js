@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   ActivityIndicator,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
@@ -23,38 +24,45 @@ export default function ProfileScreen({ navigation }) {
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [language, setLanguage] = useState('en');
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchUserData = async () => {
+    if (!user) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const docRef = doc(db, 'users', user.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        setUserData(data);
+        setNotificationsEnabled(data.notificationsEnabled || false);
+        setLanguage(data.language || 'en');
+      } else {
+        setUserData({
+          name: 'No name set',
+          role: 'No role set',
+          phone: 'Not set',
+          photoURL: null,
+        });
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load profile data.');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-      try {
-        const docRef = doc(db, 'users', user.uid);
-        const docSnap = await getDoc(docRef);
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setUserData(data);
-          setNotificationsEnabled(data.notificationsEnabled || false);
-          setLanguage(data.language || 'en');
-        } else {
-          setUserData({
-            name: 'No name set',
-            role: 'No role set',
-            phone: 'Not set',
-            photoURL: null,
-          });
-        }
-      } catch (error) {
-        Alert.alert('Error', 'Failed to load profile data.');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchUserData();
-  }, [user]);
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchUserData();
+  }, []);
 
   useEffect(() => {
     const saveLanguage = async () => {
@@ -102,8 +110,8 @@ export default function ProfileScreen({ navigation }) {
       aspect: [1, 1],
     });
 
-    if (!pickerResult.cancelled) {
-      uploadImage(pickerResult.uri);
+    if (!pickerResult.canceled) {
+      uploadImage(pickerResult.assets[0].uri);
     }
   };
 
@@ -146,7 +154,11 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView
+      contentContainerStyle={styles.container}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      keyboardShouldPersistTaps="handled"
+    >
       <Text style={styles.header}>Account</Text>
 
       <TouchableOpacity style={styles.avatarContainer} onPress={pickImage} activeOpacity={0.7}>
@@ -182,18 +194,23 @@ export default function ProfileScreen({ navigation }) {
         <Switch value={notificationsEnabled} onValueChange={toggleNotifications} />
       </View>
 
-      <View style={styles.settingsRow}>
+      {/* Language Picker */}
+      <View style={{ marginTop: 16 }}>
         <Text style={styles.label}>Language</Text>
-        <Picker
-          selectedValue={language}
-          style={styles.picker}
-          onValueChange={(itemValue) => setLanguage(itemValue)}
-        >
-          <Picker.Item label="English" value="en" />
-          <Picker.Item label="Amharic" value="am" />
-          <Picker.Item label="French" value="fr" />
-          <Picker.Item label="Arabic" value="ar" />
-        </Picker>
+        <View style={styles.languagePickerWrapper}>
+          <Picker
+            selectedValue={language}
+            onValueChange={(itemValue) => setLanguage(itemValue)}
+            style={styles.languagePicker}
+            dropdownIconColor="#000"
+          >
+            <Picker.Item label="English" value="en" />
+            <Picker.Item label="Amharic" value="am" />
+            <Picker.Item label="French" value="fr" />
+            <Picker.Item label="Arabic" value="ar" />
+            <Picker.Item label="Deutsch" value="de" />
+          </Picker>
+        </View>
       </View>
 
       <Text style={styles.version}>Version 1.0.0</Text>
@@ -215,6 +232,7 @@ const styles = StyleSheet.create({
   center: {
     justifyContent: 'center',
     alignItems: 'center',
+    flex: 1,
   },
   header: {
     fontSize: 22,
@@ -287,10 +305,15 @@ const styles = StyleSheet.create({
     borderColor: '#ccc',
     marginBottom: 10,
   },
-  picker: {
-    width: 150,
-    height: 40,
-    marginTop: -12,
+  languagePickerWrapper: {
+    backgroundColor: '#f0f0f0',
+    borderRadius: 10,
+    marginBottom: 16,
+    paddingHorizontal: 10,
+  },
+  languagePicker: {
+    height: 44,
+    flex: 1,
   },
   version: {
     textAlign: 'center',

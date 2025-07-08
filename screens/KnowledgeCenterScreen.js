@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
+  Linking,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import {
@@ -16,7 +17,7 @@ import {
   getDocs,
   doc,
   getDoc,
-  updateDoc,
+  setDoc,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
@@ -31,10 +32,15 @@ export default function KnowledgeCenterScreen() {
 
   const fetchBookmarks = async () => {
     try {
-      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
+
+      const userRef = doc(db, 'users', uid);
       const userSnap = await getDoc(userRef);
       if (userSnap.exists()) {
         setBookmarkedIds(userSnap.data()?.bookmarkedItems || []);
+      } else {
+        setBookmarkedIds([]);
       }
     } catch (error) {
       console.error('Failed to load bookmarks:', error);
@@ -60,6 +66,17 @@ export default function KnowledgeCenterScreen() {
     }
   };
 
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchData();
+    fetchBookmarks();
+  }, []);
+
+  useEffect(() => {
+    fetchData();
+    fetchBookmarks();
+  }, []);
+
   const filterByTabAndSearch = (source, tab, searchText) => {
     let list = [...source];
     if (tab !== 'all') {
@@ -73,17 +90,6 @@ export default function KnowledgeCenterScreen() {
     setFiltered(list);
   };
 
-  useEffect(() => {
-    fetchData();
-    fetchBookmarks();
-  }, []);
-
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
-    fetchBookmarks();
-  }, []);
-
   const handleSearch = (text) => {
     setSearch(text);
     filterByTabAndSearch(data, selectedTab, text);
@@ -96,20 +102,52 @@ export default function KnowledgeCenterScreen() {
 
   const toggleBookmark = async (itemId) => {
     try {
-      const userRef = doc(db, 'users', auth.currentUser.uid);
-      const alreadyBookmarked = bookmarkedIds.includes(itemId);
+      const uid = auth.currentUser?.uid;
+      if (!uid) return;
 
+      const userRef = doc(db, 'users', uid);
+      const userSnap = await getDoc(userRef);
+
+      let bookmarks = [];
+
+      if (userSnap.exists()) {
+        bookmarks = userSnap.data().bookmarkedItems || [];
+      }
+
+      const alreadyBookmarked = bookmarks.includes(itemId);
       const updated = alreadyBookmarked
-        ? bookmarkedIds.filter(id => id !== itemId)
-        : [...bookmarkedIds, itemId];
+        ? bookmarks.filter(id => id !== itemId)
+        : [...bookmarks, itemId];
 
-      await updateDoc(userRef, {
-        bookmarkedItems: updated,
-      });
+      await setDoc(userRef, { bookmarkedItems: updated }, { merge: true });
+
       setBookmarkedIds(updated);
     } catch (err) {
       console.error('Bookmark toggle failed:', err);
       Alert.alert('Error', 'Failed to update bookmark.');
+    }
+  };
+
+  const openLink = async (url) => {
+    if (!url) {
+      Alert.alert('No link provided');
+      return;
+    }
+
+    // Ensure URL starts with http or https
+    const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
+
+    try {
+      const supported = await Linking.canOpenURL(normalizedUrl);
+      if (supported) {
+        await Linking.openURL(normalizedUrl);
+      } else {
+        console.log('Unsupported URL:', normalizedUrl);
+        Alert.alert('Cannot open this URL:', normalizedUrl);
+      }
+    } catch (error) {
+      console.error('Failed to open URL:', error);
+      Alert.alert('Error', 'Something went wrong while opening the link.');
     }
   };
 
@@ -141,6 +179,15 @@ export default function KnowledgeCenterScreen() {
       <Text style={styles.updatedText}>
         Last updated: {formatTimeAgo(item.lastUpdated)}
       </Text>
+
+      {(item.type === 'pdfs' || item.type === 'videos') && !!item.url && (
+        <TouchableOpacity
+          style={styles.openButton}
+          onPress={() => openLink(item.url)}
+        >
+          <Text style={styles.openButtonText}>Download / Open</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -269,6 +316,17 @@ const styles = StyleSheet.create({
     marginTop: 6,
     fontSize: 13,
     color: '#555',
+  },
+  openButton: {
+    marginTop: 10,
+    backgroundColor: '#007bff',
+    paddingVertical: 8,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  openButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
   emptyText: {
     textAlign: 'center',

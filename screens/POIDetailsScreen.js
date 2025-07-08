@@ -1,3 +1,4 @@
+// screens/POIDetailsScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -21,12 +22,13 @@ import {
   updateDoc,
   addDoc,
   serverTimestamp,
+  setDoc,
 } from 'firebase/firestore';
 import * as Location from 'expo-location';
 
 function getDistanceFromLatLonInMeters(lat1, lon1, lat2, lon2) {
   const toRad = (value) => (value * Math.PI) / 180;
-  const R = 6371000;
+  const R = 6371000; // meters
   const dLat = toRad(lat2 - lat1);
   const dLon = toRad(lon2 - lon1);
   const a =
@@ -41,7 +43,6 @@ export default function POIDetailsScreen({ route, navigation }) {
   const [lastVisit, setLastVisit] = useState(null);
   const [loadingVisit, setLoadingVisit] = useState(true);
   const [processing, setProcessing] = useState(false);
-
   const [showSummary, setShowSummary] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
 
@@ -96,11 +97,12 @@ export default function POIDetailsScreen({ route, navigation }) {
       );
 
       if (distance > 200) {
-        Alert.alert('Too Far', `You are ${Math.round(distance)}m away.`);
+        Alert.alert('Too Far', `You are ${Math.round(distance)} meters away from the POI.`);
         setProcessing(false);
         return;
       }
 
+      // Create visit record
       const docRef = await addDoc(collection(db, 'visits'), {
         userId: auth.currentUser.uid,
         poiId: poi.id,
@@ -109,6 +111,26 @@ export default function POIDetailsScreen({ route, navigation }) {
         checkInLocation: location.coords,
         date: new Date().toISOString().slice(0, 10),
       });
+
+      // Update repLocations doc
+      await setDoc(doc(db, 'repLocations', auth.currentUser.uid), {
+        userId: auth.currentUser.uid,
+        name: auth.currentUser.displayName || 'Unknown',
+        avatarURL: auth.currentUser.photoURL || '',
+        coords: {
+          latitude: location.coords.latitude,
+          longitude: location.coords.longitude,
+        },
+        currentStatus: ['checked-in', 'moving'],
+        lastCheckIn: {
+          location: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          },
+          timestamp: serverTimestamp(),
+        },
+        lastUpdated: serverTimestamp(),
+      }, { merge: true });
 
       Alert.alert('Success', 'You are now checked in.');
       setLastVisit({
@@ -153,6 +175,7 @@ export default function POIDetailsScreen({ route, navigation }) {
   const performCheckout = async (location) => {
     try {
       const visitDocRef = doc(db, 'visits', lastVisit.id);
+
       await updateDoc(visitDocRef, {
         checkoutTime: serverTimestamp(),
         status: 'completed',
@@ -163,6 +186,7 @@ export default function POIDetailsScreen({ route, navigation }) {
       const checkInTime = lastVisit.timestamp?.toDate?.() || new Date();
       const durationMinutes = Math.floor((now - checkInTime) / 60000);
 
+      // Prepare summary data for modal
       setSummaryData({
         distance: Math.round(
           getDistanceFromLatLonInMeters(
@@ -183,6 +207,13 @@ export default function POIDetailsScreen({ route, navigation }) {
       }));
 
       setShowSummary(true);
+
+      // Update repLocations document to mark rep offline or idle on checkout (optional)
+      await setDoc(doc(db, 'repLocations', auth.currentUser.uid), {
+        currentStatus: ['idle'],
+        lastUpdated: serverTimestamp(),
+      }, { merge: true });
+
     } catch (error) {
       console.error('Checkout error:', error);
       Alert.alert('Error', `Failed to check out.\n${error.message}`);
@@ -262,7 +293,7 @@ export default function POIDetailsScreen({ route, navigation }) {
           <View style={styles.summaryModal}>
             <Text style={styles.modalTitle}>Visit Summary</Text>
 
-            {summaryData ? (
+            {summaryData && (
               <>
                 <View style={styles.summaryItem}>
                   <Text style={styles.label}>📍 Distance Moved</Text>
@@ -272,7 +303,7 @@ export default function POIDetailsScreen({ route, navigation }) {
                 <View style={styles.summaryItem}>
                   <Text style={styles.label}>🕒 Check-in Time</Text>
                   <Text style={styles.value}>
-                    {new Date(summaryData.checkInTime).toLocaleTimeString()}
+                    {summaryData.checkInTime.toLocaleTimeString()}
                   </Text>
                 </View>
 
@@ -280,27 +311,25 @@ export default function POIDetailsScreen({ route, navigation }) {
                   <Text style={styles.label}>⏱️ Duration</Text>
                   <Text style={styles.value}>{summaryData.duration} minutes</Text>
                 </View>
-
-                <TouchableOpacity
-                  style={[styles.button, { backgroundColor: '#28a745', marginTop: 18 }]}
-                  onPress={() => setShowSummary(false)}
-                >
-                  <Text style={styles.buttonText}>✅ Confirm</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.editButton}
-                  onPress={() => {
-                    setShowSummary(false);
-                    navigation.navigate('EditVisit', { visit: lastVisit });
-                  }}
-                >
-                  <Text style={styles.editButtonText}>✏️ Edit Info</Text>
-                </TouchableOpacity>
               </>
-            ) : (
-              <Text>Loading summary...</Text>
             )}
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: '#28a745', marginTop: 18 }]}
+              onPress={() => setShowSummary(false)}
+            >
+              <Text style={styles.buttonText}>✅ Confirm</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.editButton}
+              onPress={() => {
+                setShowSummary(false);
+                navigation.navigate('EditVisit', { visit: lastVisit });
+              }}
+            >
+              <Text style={styles.editButtonText}>✏️ Edit Info</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -317,81 +346,52 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 20,
   },
-  infoRow: {
-    flexDirection: 'row',
-    marginBottom: 8,
-  },
-  infoKey: {
-    fontWeight: 'bold',
-    marginRight: 6,
-    textTransform: 'capitalize',
-  },
-  infoValue: {
-    flex: 1,
-    flexWrap: 'wrap',
-  },
+  infoRow: { flexDirection: 'row', marginBottom: 8 },
+  infoKey: { fontWeight: 'bold', marginRight: 6, textTransform: 'capitalize' },
+  infoValue: { flex: 1, flexWrap: 'wrap' },
   lastVisitBox: { marginBottom: 30 },
-  sectionTitle: {
-    fontWeight: 'bold',
-    fontSize: 18,
-    marginBottom: 10,
-  },
+  sectionTitle: { fontWeight: 'bold', fontSize: 18, marginBottom: 10 },
   button: {
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
   },
-  buttonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   summaryModal: {
-    backgroundColor: 'white',
-    padding: 24,
-    borderRadius: 12,
+    backgroundColor: '#ffffff',
+    borderRadius: 10,
+    padding: 20,
     width: '85%',
-    elevation: 4,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    marginBottom: 14,
-    textAlign: 'center',
-  },
-  summaryItem: {
-    backgroundColor: '#f5f5f5',
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 12,
-  },
-  label: {
-    fontWeight: '600',
-    color: '#333',
-    marginBottom: 4,
-  },
-  value: {
-    fontSize: 16,
-    color: '#555',
-  },
-  editButton: {
-    marginTop: 12,
-    padding: 14,
-    backgroundColor: '#fff',
+    borderColor: '#ccc',
     borderWidth: 1,
-    borderColor: '#007bff',
-    borderRadius: 8,
     alignItems: 'center',
   },
-  editButtonText: {
-    color: '#007bff',
-    fontWeight: '600',
+  modalTitle: { fontWeight: 'bold', fontSize: 20, marginBottom: 10 },
+  summaryItem: {
+    backgroundColor: '#f6f6f6',
+    borderRadius: 6,
+    padding: 10,
+    width: '100%',
+    marginVertical: 6,
   },
+  label: { fontWeight: '600', color: '#333', marginBottom: 4 },
+  value: { color: '#555' },
+  editButton: {
+    marginTop: 10,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#007bff',
+    width: '100%',
+    alignItems: 'center',
+  },
+  editButtonText: { color: '#007bff', fontWeight: 'bold' },
 });
 

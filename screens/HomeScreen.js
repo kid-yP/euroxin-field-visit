@@ -103,19 +103,29 @@ export default function HomeScreen({ navigation }) {
 
       <View style={styles.quickActionsContainer}>
         <Text style={styles.quickActionsTitle}>Quick Actions</Text>
-        <View style={styles.actionsRow}>
+        <View style={styles.actionsColumn}>
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: '#28a745' }]}
             onPress={() => navigation.navigate('VisitDetails')}
           >
-            <Text style={styles.actionText}>➕ New Visit</Text>
+            <Text style={styles.actionIcon}>➕</Text>
+            <Text style={styles.actionText}>New Visit</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.actionButton, { backgroundColor: '#007bff' }]}
             onPress={() => navigation.navigate('Map')}
           >
-            <Text style={styles.actionText}>📍Show POI Map</Text>
+            <Text style={styles.actionIcon}>🖼️</Text>
+            <Text style={styles.actionText}>POI Map</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: '#ff6600' }]}
+            onPress={() => navigation.navigate('RepTracking')}
+          >
+            <Text style={styles.actionIcon}>📍</Text>
+            <Text style={styles.actionText}>Rep Locations</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -161,20 +171,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     marginBottom: 12,
   },
-  actionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
+  actionsColumn: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 12,
   },
   actionButton: {
-    flex: 1,
-    padding: 12,
+    width: 140,
+    paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionIcon: {
+    fontSize: 24,
+    marginBottom: 6,
+    color: '#fff',
   },
   actionText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 16,
+    textAlign: 'center',
   },
 });

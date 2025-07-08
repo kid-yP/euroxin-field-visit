@@ -1,25 +1,26 @@
-// navigation/AppNavigator.js
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Feather } from '@expo/vector-icons';
 
-// Screens import
+// Screens
 import HomeScreen from '../screens/HomeScreen';
 import StockScreen from '../screens/StockScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import VisitDetailsScreen from '../screens/VisitDetailsScreen';
-import VisitSummaryScreen from '../screens/VisitSummaryScreen';  // <-- import here
+import VisitSummaryScreen from '../screens/VisitSummaryScreen';
 import MapScreen from '../screens/MapScreen';
 import POIDetailsScreen from '../screens/POIDetailsScreen';
 import EditVisitScreen from '../screens/EditVisitScreen';
 import TaskListScreen from '../screens/TaskListScreen';
 import TaskDetailsScreen from '../screens/TaskDetailsScreen';
 import KnowledgeCenterScreen from '../screens/KnowledgeCenterScreen';
+import RepTrackingScreen from '../screens/RepTrackingScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+// Bottom Tab Navigator
 function Tabs() {
   return (
     <Tab.Navigator
@@ -62,20 +63,18 @@ function Tabs() {
   );
 }
 
+// Main Stack Navigator
 export default function AppNavigator() {
   return (
     <Stack.Navigator>
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
       <Stack.Screen name="VisitDetails" component={VisitDetailsScreen} options={{ title: 'Visit' }} />
-      <Stack.Screen
-        name="VisitSummary"
-        component={VisitSummaryScreen}
-        options={{ title: 'Visit Summary' }}
-      />
+      <Stack.Screen name="VisitSummary" component={VisitSummaryScreen} options={{ title: 'Visit Summary' }} />
       <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
       <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
       <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
       <Stack.Screen name="TaskDetails" component={TaskDetailsScreen} options={{ title: 'Task' }} />
+      <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ title: 'Field Reps Live Map' }} />
     </Stack.Navigator>
   );
 }
