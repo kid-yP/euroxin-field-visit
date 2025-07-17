@@ -1,12 +1,12 @@
 {
   "plugins": [
-  [
-    "expo-image-picker",
-    {
-      "photosPermission": "Allow this app to access your photos."
-    }
-  ]
-],
+    [
+      "expo-image-picker",
+      {
+        "photosPermission": "Allow this app to access your photos."
+      }
+    ]
+  ],
   "expo": {
     "name": "euroxin-field-visit",
     "slug": "euroxin-field-visit",
@@ -28,10 +28,16 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.kidus_yosef.euroxinfieldvisit"
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "97f09a08-8180-40f2-bc67-77f3282708e9"
+      }
     }
   }
 }
