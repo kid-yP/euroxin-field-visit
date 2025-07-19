@@ -83,3 +83,4 @@ Track engagement
 ⚙️ System Settings Configuration: visit thresholds, radius, branding, language
 
 🔐 Security & Logs Role-based access control
+
