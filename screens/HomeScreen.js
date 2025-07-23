@@ -1,197 +1,372 @@
-import React, { useEffect, useState, useCallback } from 'react';
+// screens/HomeScreen.js
+import React, { useState, useCallback } from 'react';
 import {
   View,
   Text,
-  StyleSheet,
   ScrollView,
   TouchableOpacity,
-  RefreshControl,
-  ActivityIndicator,
+  StyleSheet,
+  Image,
+  Dimensions,
+  RefreshControl
 } from 'react-native';
-import { auth, db } from '../firebase/config';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import ExpandableSection from '../components/ExpandableSection';
 
+const { width } = Dimensions.get('window');
+
 export default function HomeScreen({ navigation }) {
-  const [todayVisits, setTodayVisits] = useState([]);
-  const [weekVisits, setWeekVisits] = useState([]);
-  const [monthVisits, setMonthVisits] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [todayVisits, setTodayVisits] = useState([
+    { id: 1, name: 'John Pharmacy', status: 'Pending', time: '09:00 AM', bgColor: '#FFF5E6' },
+    { id: 2, name: 'City Medical', status: 'Completed', time: '11:30 AM', bgColor: '#E6FFEE' }
+  ]);
+  
+  const [weekVisits, setWeekVisits] = useState([
+    { id: 3, name: 'Health Plus', status: 'Scheduled', date: 'Tomorrow', bgColor: '#E6F7FF' },
+    { id: 4, name: 'MediCare', status: 'Scheduled', date: 'Friday', bgColor: '#F0E6FF' }
+  ]);
+  
+  const [monthVisits, setMonthVisits] = useState([
+    { id: 5, name: 'PharmaOne', status: 'Scheduled', date: 'May 25', bgColor: '#FFF0E6' }
+  ]);
 
-  const fetchVisits = async () => {
-    try {
-      const today = new Date();
-      const todayStr = today.toISOString().slice(0, 10);
-      const startOfWeek = new Date(today);
-      startOfWeek.setDate(today.getDate() - today.getDay());
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-
-      const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
-      const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
-
-      const userId = auth.currentUser?.uid;
-      if (!userId) return;
-
-      const visitsRef = collection(db, 'visits');
-      const snapshot = await getDocs(query(visitsRef, where('userId', '==', userId)));
-      const allVisits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const filterByDate = (dateStr, start, end) => {
-        const date = new Date(dateStr);
-        return date >= start && date <= end;
-      };
-
-      setTodayVisits(allVisits.filter(v => v.date === todayStr));
-      setWeekVisits(allVisits.filter(v => filterByDate(v.date, startOfWeek, endOfWeek)));
-      setMonthVisits(allVisits.filter(v => filterByDate(v.date, startOfMonth, endOfMonth)));
-    } catch (error) {
-      console.error('Error fetching visits:', error.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+  const metrics = [
+    { 
+      title: "Today", 
+      value: todayVisits.length, 
+      progress: 0.5,
+      icon: 'today-outline',
+      color: '#FF6B00',
+      bgColor: '#FFF5E6'
+    },
+    { 
+      title: "Week", 
+      value: weekVisits.length, 
+      progress: 0.3,
+      icon: 'calendar-outline',
+      color: '#00C853',
+      bgColor: '#E6F7FF'
+    },
+    { 
+      title: "Month", 
+      value: monthVisits.length, 
+      progress: 0.1,
+      icon: 'calendar-outline',
+      color: '#2962FF',
+      bgColor: '#F0E6FF'
     }
-  };
-
-  useEffect(() => {
-    fetchVisits();
-  }, []);
+  ];
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
-    fetchVisits();
-  }, []);
+    setTimeout(() => {
+      setTodayVisits([...todayVisits].reverse());
+      setWeekVisits([...weekVisits].reverse());
+      setMonthVisits([...monthVisits].reverse());
+      setRefreshing(false);
+    }, 1500);
+  }, [todayVisits, weekVisits, monthVisits]);
 
-  const renderVisitList = (visits) =>
-    visits.map((v) => (
-      <TouchableOpacity
-        key={v.id}
-        onPress={() => navigation.navigate('VisitSummary', { visitData: v })}
-      >
-        <Text style={styles.visitItem}>• {v.contactName} ({v.status})</Text>
-      </TouchableOpacity>
-    ));
-
-  return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+  const renderVisitItem = (visit) => (
+    <TouchableOpacity 
+      key={visit.id} 
+      style={[styles.visitItem, { backgroundColor: visit.bgColor }]}
+      onPress={() => navigation.navigate('VisitDetails', { visit })}
     >
-      <Text style={styles.title}>Visits Overview</Text>
-
-      {loading ? (
-        <View style={styles.center}>
-          <ActivityIndicator size="large" color="#007bff" />
-          <Text style={styles.loadingText}>Loading visits...</Text>
-        </View>
-      ) : (
-        <>
-          <ExpandableSection title={`Today’s Visits (${todayVisits.length})`}>
-            {todayVisits.length ? renderVisitList(todayVisits) : <Text style={styles.emptyText}>No visits today.</Text>}
-          </ExpandableSection>
-
-          <ExpandableSection title={`This Week’s Plan (${weekVisits.length})`}>
-            {weekVisits.length ? renderVisitList(weekVisits) : <Text style={styles.emptyText}>No visits this week.</Text>}
-          </ExpandableSection>
-
-          <ExpandableSection title={`This Month’s Plan (${monthVisits.length})`}>
-            {monthVisits.length ? renderVisitList(monthVisits) : <Text style={styles.emptyText}>No visits this month.</Text>}
-          </ExpandableSection>
-        </>
-      )}
-
-      <View style={styles.quickActionsContainer}>
-        <Text style={styles.quickActionsTitle}>Quick Actions</Text>
-        <View style={styles.actionsColumn}>
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#28a745' }]}
-            onPress={() => navigation.navigate('VisitDetails')}
-          >
-            <Text style={styles.actionIcon}>➕</Text>
-            <Text style={styles.actionText}>New Visit</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#007bff' }]}
-            onPress={() => navigation.navigate('Map')}
-          >
-            <Text style={styles.actionIcon}>🖼️</Text>
-            <Text style={styles.actionText}>POI Map</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#ff6600' }]}
-            onPress={() => navigation.navigate('RepTracking')}
-          >
-            <Text style={styles.actionIcon}>📍</Text>
-            <Text style={styles.actionText}>Rep Locations</Text>
-          </TouchableOpacity>
+      <View style={styles.visitInfo}>
+        <Text style={styles.visitName}>{visit.name}</Text>
+        <View style={styles.visitMeta}>
+          <View style={styles.timeContainer}>
+            <Ionicons name="time-outline" size={14} color="#6B778C" style={styles.clockIcon} />
+            <Text style={styles.visitTime}>{visit.time || visit.date}</Text>
+          </View>
+          <View style={[
+            styles.statusBadge,
+            { 
+              backgroundColor: visit.status === 'Completed' ? '#E6FFEE' : 
+                              visit.status === 'Pending' ? '#FFF5E6' : '#E6F7FF',
+              borderColor: visit.status === 'Completed' ? '#00C853' : 
+                          visit.status === 'Pending' ? '#FF6B00' : '#2962FF'
+            }
+          ]}>
+            <Text style={[
+              styles.visitStatus,
+              { 
+                color: visit.status === 'Completed' ? '#00C853' : 
+                       visit.status === 'Pending' ? '#FF6B00' : '#2962FF'
+              }
+            ]}>
+              {visit.status}
+            </Text>
+          </View>
         </View>
       </View>
-    </ScrollView>
+      <Ionicons name="chevron-forward" size={20} color="#6B778C" />
+    </TouchableOpacity>
+  );
+
+  return (
+    <View style={styles.container}>
+      {/* Header with reversed gradient */}
+      <LinearGradient
+        colors={['#38B6FF4D', '#80CC28']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <Image 
+          source={require('../assets/LOGO.png')}
+          style={styles.logo}
+        />
+      </LinearGradient>
+
+      {/* Metric Cards Container */}
+      <View style={styles.metricsRow}>
+        {metrics.map((metric, index) => (
+          <View key={index} style={[styles.metricCard, { backgroundColor: metric.bgColor }]}>
+            <View style={styles.metricHeader}>
+              <Ionicons 
+                name={metric.icon} 
+                size={20} 
+                color={metric.color} 
+              />
+              <Text style={styles.metricTitle}>{metric.title}</Text>
+            </View>
+            
+            <Text style={[styles.metricValue, { color: metric.color }]}>{metric.value}</Text>
+            
+            <View style={styles.progressContainer}>
+              <View 
+                style={[
+                  styles.progressBar,
+                  { 
+                    width: `${metric.progress * 100}%`,
+                    backgroundColor: metric.color
+                  }
+                ]}
+              />
+            </View>
+            
+            <Text style={styles.metricSubtext}>
+              {Math.round(metric.progress * 100)}% completed
+            </Text>
+          </View>
+        ))}
+      </View>
+
+      {/* Visit Sections with Pull-to-Refresh */}
+      <ScrollView 
+        style={styles.sectionsContainer}
+        contentContainerStyle={styles.sectionsContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            progressViewOffset={40} // This ensures the refresh control appears below the header
+            colors={['#FF6B00', '#00C853', '#2962FF']}
+            tintColor="#FF6B00"
+          />
+        }
+      >
+        <ExpandableSection 
+          title={`Today's Visits (${todayVisits.length})`}
+          icon="today-outline"
+          iconColor="#FF6B00"
+          headerBgColor="#FFF5E6"
+          initialExpanded={true}
+          headerStyle={styles.todayHeader}
+        >
+          {todayVisits.map(renderVisitItem)}
+        </ExpandableSection>
+
+        <ExpandableSection 
+          title={`This Week's Plan (${weekVisits.length})`}
+          icon="calendar-outline"
+          iconColor="#00C853"
+          headerBgColor="#E6F7FF"
+          headerStyle={styles.weekHeader}
+        >
+          {weekVisits.map(renderVisitItem)}
+        </ExpandableSection>
+
+        <ExpandableSection 
+          title={`This Month's Plan (${monthVisits.length})`}
+          icon="calendar-outline"
+          iconColor="#2962FF"
+          headerBgColor="#F0E6FF"
+          headerStyle={styles.monthHeader}
+        >
+          {monthVisits.map(renderVisitItem)}
+        </ExpandableSection>
+      </ScrollView>
+
+      {/* Floating Action Button */}
+      <TouchableOpacity 
+        style={styles.startVisitButton}
+        onPress={() => navigation.navigate('NewVisit')}
+      >
+        <Ionicons name="add" size={28} color="white" />
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingTop: 50,
-    backgroundColor: '#fff',
-    flexGrow: 1,
+    flex: 1,
+    backgroundColor: '#E9FFFA',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
+  header: {
+    width: '100%',
+    height: 63,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    borderBottomRightRadius: 30,
+    borderBottomLeftRadius: 30,
+  },
+  logo: {
+    width: 145,
+    height: 210,
+    resizeMode: 'contain',
+    left: -8,
+  },
+  metricsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  metricCard: {
+    width: '30%',
+    borderRadius: 12,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  metricHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     marginBottom: 12,
   },
-  center: {
-    alignItems: 'center',
-    marginTop: 30,
+  metricTitle: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 13,
+    color: '#172B4D',
+    left: -5,
   },
-  loadingText: {
-    marginTop: 10,
-    fontSize: 16,
-    color: '#555',
+  metricValue: {
+    fontFamily: 'Poppins-Bold',
+    fontSize: 20,
+    marginBottom: 6,
   },
-  emptyText: {
-    color: 'gray',
-    fontSize: 15,
-    marginVertical: 8,
+  progressContainer: {
+    height: 6,
+    backgroundColor: 'rgba(255,255,255,0.5)',
+    borderRadius: 3,
+    marginBottom: 6,
+    overflow: 'hidden',
   },
-  visitItem: {
-    paddingVertical: 6,
-    color: '#007bff',
+  progressBar: {
+    height: '100%',
+    borderRadius: 3,
   },
-  quickActionsContainer: {
-    marginTop: 30,
+  metricSubtext: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 10,
+    color: '#6B778C',
   },
-  quickActionsTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 12,
+  sectionsContainer: {
+    flex: 1,
   },
-  actionsColumn: {
-    flexDirection: 'column',
-    alignItems: 'center',
+  sectionsContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 100,
     gap: 12,
   },
-  actionButton: {
-    width: 140,
-    paddingVertical: 12,
-    borderRadius: 8,
+  todayHeader: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#FF6B00',
+  },
+  weekHeader: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#00C853',
+  },
+  monthHeader: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#2962FF',
+  },
+  visitItem: {
+    borderRadius: 12,
+    padding: 16,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
   },
-  actionIcon: {
-    fontSize: 24,
-    marginBottom: 6,
-    color: '#fff',
+  visitInfo: {
+    flex: 1,
   },
-  actionText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  visitName: {
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
-    textAlign: 'center',
+    color: '#172B4D',
+    marginBottom: 4,
+  },
+  visitMeta: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  timeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  clockIcon: {
+    marginRight: 4,
+  },
+  visitTime: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#6B778C',
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  visitStatus: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+  },
+  startVisitButton: {
+    position: 'absolute',
+    bottom: 32,
+    right: 32,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: '#007bff',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#007bff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
 });
