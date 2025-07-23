@@ -11,13 +11,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { db, auth, storage } from '../firebase/config';
-import {
-  collection,
-  addDoc,
-  Timestamp,
-  doc,
-  updateDoc,
-} from 'firebase/firestore';
+import { collection, addDoc, Timestamp, doc, updateDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -132,230 +126,298 @@ export default function VisitDetailsScreen({ route, navigation }) {
       if (visit.id) {
         const docRef = doc(db, 'visits', visit.id);
         await updateDoc(docRef, visitData);
+        Alert.alert('Success', 'Visit updated successfully!');
       } else {
         await addDoc(collection(db, 'visits'), {
           ...visitData,
           userId: auth.currentUser?.uid,
         });
+        Alert.alert('Success', 'New visit created successfully!');
       }
 
-      navigation.navigate('VisitSummary', { visit: { ...visit, ...visitData } });
+      navigation.goBack();
     } catch (error) {
       console.error('Error submitting visit:', error);
-      Alert.alert('Error', 'Could not save visit.');
+      Alert.alert('Error', 'Could not save visit. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.heading}>
-        {visit.id ? 'Edit Visit' : 'New Visit'}
-      </Text>
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContainer}>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Contact Information</Text>
+          
+          <TextInput
+            placeholder="Contact Name *"
+            placeholderTextColor="#6B778C"
+            value={contactName}
+            onChangeText={setContactName}
+            style={styles.input}
+          />
+          
+          <TextInput
+            placeholder="Contact Phone *"
+            placeholderTextColor="#6B778C"
+            value={contactPhone}
+            onChangeText={setContactPhone}
+            keyboardType="phone-pad"
+            style={styles.input}
+          />
+        </View>
 
-      <TextInput
-        placeholder="Contact Name *"
-        value={contactName}
-        onChangeText={setContactName}
-        style={styles.input}
-      />
-      <TextInput
-        placeholder="Contact Phone *"
-        value={contactPhone}
-        onChangeText={setContactPhone}
-        keyboardType="phone-pad"
-        style={styles.input}
-      />
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Visit Details</Text>
+          
+          <Text style={styles.label}>Familiar with Euroxin? *</Text>
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleButton, isFamiliar === true && styles.toggleSelected]}
+              onPress={() => setIsFamiliar(true)}
+            >
+              <Text style={isFamiliar === true ? styles.toggleTextSelected : styles.toggleText}>Yes</Text>
+            </TouchableOpacity>
 
-      <Text style={styles.label}>Familiar with Euroxin? *</Text>
-      <View style={styles.toggleContainer}>
-        <TouchableOpacity
-          style={[styles.toggleButton, isFamiliar === true && styles.toggleSelected]}
-          onPress={() => setIsFamiliar(true)}
-        >
-          <Text style={isFamiliar === true ? styles.toggleTextSelected : styles.toggleText}>Yes</Text>
-        </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, isFamiliar === false && styles.toggleSelected]}
+              onPress={() => setIsFamiliar(false)}
+            >
+              <Text style={isFamiliar === false ? styles.toggleTextSelected : styles.toggleText}>No</Text>
+            </TouchableOpacity>
+          </View>
 
-        <TouchableOpacity
-          style={[styles.toggleButton, isFamiliar === false && styles.toggleSelected]}
-          onPress={() => setIsFamiliar(false)}
-        >
-          <Text style={isFamiliar === false ? styles.toggleTextSelected : styles.toggleText}>No</Text>
-        </TouchableOpacity>
-      </View>
+          <Text style={styles.label}>Interested to order? *</Text>
+          <View style={styles.toggleContainer}>
+            <TouchableOpacity
+              style={[styles.toggleButton, interested === true && styles.toggleSelected]}
+              onPress={() => setInterested(true)}
+            >
+              <Text style={[styles.toggleText, interested === true && styles.toggleTextSelected]}>Yes</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.toggleButton, interested === false && styles.toggleSelected]}
+              onPress={() => setInterested(false)}
+            >
+              <Text style={[styles.toggleText, interested === false && styles.toggleTextSelected]}>No</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
-      <Text style={styles.label}>Interested to order? *</Text>
-      <View style={styles.toggleContainer}>
-        <TouchableOpacity
-          style={[styles.toggleButton, interested === true && styles.toggleSelected]}
-          onPress={() => setInterested(true)}
-        >
-          <Text style={[styles.toggleText, interested === true && styles.toggleTextSelected]}>Yes</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.toggleButton, interested === false && styles.toggleSelected]}
-          onPress={() => setInterested(false)}
-        >
-          <Text style={[styles.toggleText, interested === false && styles.toggleTextSelected]}>No</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Products of Interest</Text>
+          <View style={styles.chipContainer}>
+            {productOptions.map((product) => (
+              <TouchableOpacity
+                key={product}
+                style={[styles.chip, selectedProducts.includes(product) && styles.chipSelected]}
+                onPress={() => toggleProduct(product)}
+              >
+                <Text style={selectedProducts.includes(product) ? styles.chipTextSelected : styles.chipText}>
+                  {product}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
 
-      <Text style={styles.label}>Products of Interest</Text>
-      <View style={styles.chipContainer}>
-        {productOptions.map((product) => (
-          <TouchableOpacity
-            key={product}
-            style={[styles.chip, selectedProducts.includes(product) && styles.chipSelected]}
-            onPress={() => toggleProduct(product)}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Notes</Text>
+          <TextInput
+            placeholder="Enter your notes here..."
+            placeholderTextColor="#6B778C"
+            value={notes}
+            onChangeText={setNotes}
+            multiline
+            style={[styles.input, styles.notesInput]}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Attachments</Text>
+          <TouchableOpacity 
+            onPress={pickImage} 
+            style={styles.photoButton} 
+            disabled={uploading}
           >
-            <Text style={selectedProducts.includes(product) ? styles.chipTextSelected : styles.chipText}>
-              {product}
+            <Ionicons 
+              name={image ? 'checkmark-circle' : 'camera'} 
+              size={20} 
+              color="white" 
+            />
+            <Text style={styles.photoButtonText}>
+              {uploading ? 'Uploading...' : image ? 'Photo Added' : 'Add Photo'}
             </Text>
           </TouchableOpacity>
-        ))}
-      </View>
-
-      <TextInput
-        placeholder="Notes / Comments"
-        value={notes}
-        onChangeText={setNotes}
-        multiline
-        style={[styles.input, { height: 100 }]}
-      />
-
-      <TouchableOpacity onPress={pickImage} style={styles.photoButton} disabled={uploading}>
-        <Ionicons name={image ? 'checkmark-circle' : 'camera'} size={20} color="white" />
-        <Text style={styles.photoButtonText}>
-          {uploading ? 'Uploading...' : image ? 'Photo Added' : 'Attach Photo'}
-        </Text>
-      </TouchableOpacity>
-
-      {image && <Image source={{ uri: image }} style={styles.imagePreview} />}
+          
+          {image && (
+            <Image 
+              source={{ uri: image }} 
+              style={styles.imagePreview} 
+              resizeMode="cover"
+            />
+          )}
+        </View>
+      </ScrollView>
 
       <TouchableOpacity
         onPress={handleSubmit}
-        style={[styles.submitButton, submitting && styles.submitButtonDisabled]}
+        style={styles.submitButton}
         disabled={submitting}
       >
         {submitting ? (
-          <ActivityIndicator color="#fff" />
+          <ActivityIndicator color="white" />
         ) : (
           <Text style={styles.submitButtonText}>
-            {visit.id ? 'Update Visit' : 'Submit Visit'}
+            {visit.id ? 'UPDATE VISIT' : 'SAVE VISIT'}
           </Text>
         )}
       </TouchableOpacity>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    padding: 20,
-    paddingBottom: 40 
+  container: {
+    flex: 1,
+    backgroundColor: '#E9FFFA',
   },
-  heading: {
-    fontSize: 22,
-    fontFamily: 'Poppins-Bold',
-    marginBottom: 20,
-    textAlign: 'center',
+  scrollContainer: {
+    padding: 16,
+    paddingBottom: 100,
+    paddingTop: 20, // Added some top padding to compensate for removed header
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  sectionTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
     color: '#172B4D',
+    marginBottom: 12,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#E0E0E0',
     borderRadius: 10,
-    padding: 12,
+    padding: 14,
     marginBottom: 16,
     fontFamily: 'Poppins-Regular',
-    fontSize: 16,
-  },
-  label: { 
-    fontFamily: 'Poppins-SemiBold', 
-    marginBottom: 8,
+    fontSize: 15,
     color: '#172B4D',
+    backgroundColor: '#FAFAFA',
+  },
+  notesInput: {
+    height: 120,
+    textAlignVertical: 'top',
+  },
+  label: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#6B778C',
+    marginBottom: 8,
   },
   toggleContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 16,
+    justifyContent: 'space-between',
+    marginBottom: 20,
   },
   toggleButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 20,
+    width: '48%',
+    paddingVertical: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#007bff',
-    backgroundColor: '#fff',
+    backgroundColor: 'white',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toggleSelected: {
     backgroundColor: '#007bff',
   },
   toggleText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
     color: '#007bff',
-    fontFamily: 'Poppins-SemiBold',
-    textAlign: 'center',
   },
   toggleTextSelected: {
-    color: '#fff',
-    fontFamily: 'Poppins-SemiBold',
-    textAlign: 'center',
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: 'white',
   },
   chipContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 16,
+    marginBottom: 8,
   },
   chip: {
     paddingVertical: 8,
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     borderRadius: 20,
-    backgroundColor: '#eee',
-    margin: 4,
+    backgroundColor: '#F5F5F5',
+    marginRight: 8,
+    marginBottom: 8,
   },
   chipSelected: {
     backgroundColor: '#007bff',
   },
   chipText: {
-    color: '#000',
     fontFamily: 'Poppins-Regular',
+    fontSize: 13,
+    color: '#6B778C',
   },
   chipTextSelected: {
-    color: '#fff',
     fontFamily: 'Poppins-Regular',
+    fontSize: 13,
+    color: 'white',
   },
   photoButton: {
     backgroundColor: '#007bff',
-    padding: 12,
+    padding: 14,
     borderRadius: 10,
-    alignItems: 'center',
-    marginBottom: 16,
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 8,
+    marginBottom: 16,
   },
   photoButtonText: {
-    color: '#fff',
+    color: 'white',
     fontFamily: 'Poppins-SemiBold',
+    fontSize: 15,
+    marginLeft: 8,
   },
   imagePreview: {
     width: '100%',
     height: 200,
-    marginBottom: 16,
     borderRadius: 10,
   },
   submitButton: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
     backgroundColor: '#007bff',
-    padding: 15,
+    padding: 16,
     borderRadius: 10,
     alignItems: 'center',
-  },
-  submitButtonDisabled: {
-    backgroundColor: '#999',
+    justifyContent: 'center',
+    shadowColor: '#007bff',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   submitButtonText: {
-    color: '#fff',
+    color: 'white',
     fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
   },
