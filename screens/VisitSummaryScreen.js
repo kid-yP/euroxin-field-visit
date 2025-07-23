@@ -4,12 +4,11 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity,
   Image
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 
-export default function VisitSummaryScreen({ route, navigation }) {
+export default function VisitSummaryScreen({ route }) {
   const visit = route.params?.visit || {};
 
   const visitDetails = {
@@ -38,10 +37,6 @@ export default function VisitSummaryScreen({ route, navigation }) {
       ]
   };
 
-  const handleEdit = () => {
-    navigation.navigate('VisitDetails', { visit });
-  };
-
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.header}>
@@ -55,46 +50,58 @@ export default function VisitSummaryScreen({ route, navigation }) {
       </View>
 
       <View style={styles.infoBox}>
-        <View style={styles.infoRow}>
-          <Feather name="user" size={20} color="#007bff" />
-          <Text style={styles.infoText}>{visitDetails.contactName}</Text>
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Feather name="user" size={20} color="#007bff" />
+            <Text style={styles.infoText}>{visitDetails.contactName}</Text>
+          </View>
+          <View style={styles.divider} />
         </View>
 
-        <View style={styles.infoRow}>
-          <Feather name="phone" size={20} color="#007bff" />
-          <Text style={styles.infoText}>{visitDetails.contactPhone}</Text>
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Feather name="phone" size={20} color="#007bff" />
+            <Text style={styles.infoText}>{visitDetails.contactPhone}</Text>
+          </View>
+          <View style={styles.divider} />
+        </View>
+
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Feather name="map-pin" size={20} color="#007bff" />
+            <Text style={styles.infoText}>{visitDetails.address}</Text>
+          </View>
+          <View style={styles.divider} />
+        </View>
+
+        <View style={styles.infoSection}>
+          <View style={styles.infoRow}>
+            <Feather name="mail" size={20} color="#007bff" />
+            <Text style={styles.infoText}>{visitDetails.email}</Text>
+          </View>
+          {visitDetails.products.length > 0 && <View style={styles.divider} />}
         </View>
 
         {visitDetails.products.length > 0 && (
-          <View style={styles.infoRow}>
-            <Feather name="package" size={20} color="#007bff" />
-            <Text style={styles.infoText}>
-              {visitDetails.products.join(', ')}
-            </Text>
+          <View style={styles.infoSection}>
+            <View style={styles.infoRow}>
+              <Feather name="package" size={20} color="#007bff" />
+              <Text style={styles.infoText}>
+                {visitDetails.products.join(', ')}
+              </Text>
+            </View>
+            {visitDetails.notes && <View style={styles.divider} />}
           </View>
         )}
 
         {visitDetails.notes && (
-          <View style={styles.infoRow}>
-            <Feather name="edit" size={20} color="#007bff" />
-            <Text style={styles.infoText}>{visitDetails.notes}</Text>
+          <View style={styles.infoSection}>
+            <View style={styles.infoRow}>
+              <Feather name="edit" size={20} color="#007bff" />
+              <Text style={styles.infoText}>{visitDetails.notes}</Text>
+            </View>
           </View>
         )}
-      </View>
-
-      <View style={styles.actionButtons}>
-        <TouchableOpacity style={styles.primaryButton} onPress={handleEdit}>
-          <Ionicons name="create-outline" size={20} color="white" />
-          <Text style={styles.primaryButtonText}>Edit Visit</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity 
-          style={styles.secondaryButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Ionicons name="arrow-back" size={20} color="#007bff" />
-          <Text style={styles.secondaryButtonText}>Back</Text>
-        </TouchableOpacity>
       </View>
 
       {visitDetails.image && (
@@ -124,7 +131,7 @@ export default function VisitSummaryScreen({ route, navigation }) {
                 </Text>
                 {note.visited && (
                   <View style={styles.visitedBadge}>
-                    <Ionicons name="checkmark" size={14} color="white" />
+                    <Feather name="check" size={14} color="white" />
                     <Text style={styles.visitedBadgeText}>Visited</Text>
                   </View>
                 )}
@@ -149,7 +156,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 20
+    marginBottom: 20,
   },
   visitorName: {
     fontSize: 24,
@@ -176,14 +183,16 @@ const styles = StyleSheet.create({
   infoBox: {
     backgroundColor: 'white',
     borderRadius: 12,
-    padding: 20,
+    paddingHorizontal: 16,
     marginBottom: 20,
     elevation: 2
+  },
+  infoSection: {
+    paddingVertical: 12,
   },
   infoRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginBottom: 15
   },
   infoText: {
     fontFamily: 'Poppins-Regular',
@@ -191,45 +200,6 @@ const styles = StyleSheet.create({
     color: '#6B778C',
     marginLeft: 12,
     flex: 1
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 12,
-    marginBottom: 25
-  },
-  primaryButton: {
-    flex: 2,
-    backgroundColor: '#007bff',
-    borderRadius: 10,
-    padding: 15,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    elevation: 2
-  },
-  primaryButtonText: {
-    color: 'white',
-    fontFamily: 'Poppins-SemiBold',
-    fontSize: 16
-  },
-  secondaryButton: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderWidth: 1,
-    borderColor: '#007bff',
-    borderRadius: 10,
-    padding: 15,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-    elevation: 2
-  },
-  secondaryButtonText: {
-    color: '#007bff',
-    fontFamily: 'Poppins-Medium',
-    fontSize: 16
   },
   sectionTitle: {
     fontFamily: 'Poppins-SemiBold',
@@ -294,7 +264,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 1,
-    backgroundColor: '#eee',
-    marginVertical: 12
+    backgroundColor: '#F5F5F5',
+    marginVertical: 4,
   }
 });
