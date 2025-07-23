@@ -17,6 +17,7 @@ const { width } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const [todayVisits, setTodayVisits] = useState([
     { id: 1, name: 'John Pharmacy', status: 'Pending', time: '09:00 AM', bgColor: '#FFF5E6' },
     { id: 2, name: 'City Medical', status: 'Completed', time: '11:30 AM', bgColor: '#E6FFEE' }
@@ -57,6 +58,10 @@ export default function HomeScreen({ navigation }) {
       bgColor: '#F0E6FF'
     }
   ];
+
+  const toggleMenu = () => {
+    setShowMenu(!showMenu);
+  };
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -114,11 +119,76 @@ export default function HomeScreen({ navigation }) {
         end={{ x: 1, y: 0 }}
         style={styles.header}
       >
-        <Image 
-          source={require('../assets/LOGO.png')}
-          style={styles.logo}
-        />
+        <View style={styles.headerContent}>
+          <Image 
+            source={require('../assets/LOGO.png')}
+            style={styles.logo}
+          />
+          <View style={styles.headerRight}>
+            <TouchableOpacity 
+              style={styles.addButton}
+              onPress={toggleMenu}
+              activeOpacity={0.7}
+            >
+              <Ionicons name="add" size={28} color="white" style={styles.addIcon} />
+            </TouchableOpacity>
+          </View>
+        </View>
       </LinearGradient>
+
+      {/* Enhanced Dropdown Menu */}
+      {showMenu && (
+        <View style={styles.dropdownMenu}>
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => {
+              navigation.navigate('VisitDetails', { visit: {} });
+              setShowMenu(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuIconContainer}>
+              <Ionicons name="document-text-outline" size={20} color="#007bff" />
+            </View>
+            <Text style={styles.menuItemText}>New Visit</Text>
+            <Ionicons name="chevron-forward" size={18} color="#6B778C" />
+          </TouchableOpacity>
+          
+          <View style={styles.menuDivider} />
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => {
+              navigation.navigate('POIDetails', { poi: {} });
+              setShowMenu(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuIconContainer}>
+              <Ionicons name="location-outline" size={20} color="#007bff" />
+            </View>
+            <Text style={styles.menuItemText}>POI Screen</Text>
+            <Ionicons name="chevron-forward" size={18} color="#6B778C" />
+          </TouchableOpacity>
+          
+          <View style={styles.menuDivider} />
+          
+          <TouchableOpacity 
+            style={styles.menuItem}
+            onPress={() => {
+              navigation.navigate('RepTracking');
+              setShowMenu(false);
+            }}
+            activeOpacity={0.7}
+          >
+            <View style={styles.menuIconContainer}>
+              <Ionicons name="people-outline" size={20} color="#007bff" />
+            </View>
+            <Text style={styles.menuItemText}>Rep Tracker</Text>
+            <Ionicons name="chevron-forward" size={18} color="#6B778C" />
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={styles.metricsRow}>
         {metrics.map((metric, index) => (
@@ -192,13 +262,6 @@ export default function HomeScreen({ navigation }) {
           {monthVisits.map(renderVisitItem)}
         </ExpandableSection>
       </ScrollView>
-
-      <TouchableOpacity 
-        style={styles.startVisitButton}
-        onPress={() => navigation.navigate('VisitDetails')}
-      >
-        <Ionicons name="add" size={28} color="white" />
-      </TouchableOpacity>
     </View>
   );
 }
@@ -210,19 +273,84 @@ const styles = StyleSheet.create({
   },
   header: {
     width: '100%',
-    height: 63,
+    height: 70,
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    justifyContent: 'center',
+  },
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 24,
-    borderBottomRightRadius: 30,
-    borderBottomLeftRadius: 30,
   },
   logo: {
-    width: 145,
-    height: 210,
+    width: 150,
+    height: 250,
     resizeMode: 'contain',
-    left: -8,
+    left: -11,
+    top: 6,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  addButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
+    top: 5,
+  },
+  addIcon: {
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    right: 20,
+    top: 70,
+    backgroundColor: 'white',
+    borderRadius: 14,
+    paddingVertical: 8,
+    width: 220,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 100,
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+  },
+  menuIconContainer: {
+    width: 30,
+    alignItems: 'center',
+  },
+  menuItemText: {
+    flex: 1,
+    fontFamily: 'Poppins-Medium',
+    fontSize: 15,
+    color: '#172B4D',
+    marginLeft: 12,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F0F0F0',
+    marginHorizontal: 16,
   },
   metricsRow: {
     flexDirection: 'row',
@@ -248,6 +376,7 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Medium',
     fontSize: 13,
     color: '#172B4D',
+    left: -4,
   },
   metricValueContainer: {
     flexDirection: 'row',
@@ -343,21 +472,5 @@ const styles = StyleSheet.create({
   visitStatus: {
     fontFamily: 'Poppins-Medium',
     fontSize: 12,
-  },
-  startVisitButton: {
-    position: 'absolute',
-    bottom: 32,
-    right: 32,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#007bff',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#007bff',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
 });
