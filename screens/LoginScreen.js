@@ -14,7 +14,7 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../firebase/config';
 
 const { width, height } = Dimensions.get('window');
@@ -25,6 +25,7 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const dotAnimation = new Animated.Value(0);
 
   // Animation for loading dots
@@ -48,20 +49,50 @@ export default function LoginScreen() {
       };
       animateDots();
 
-      // Move to welcome screen after 2 seconds
       const timer = setTimeout(() => setCurrentScreen(1), 2000);
       return () => clearTimeout(timer);
     }
   }, [currentScreen]);
 
   const handleLogin = async () => {
+    // Empty field validation
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Validation Error', 'Please enter both email and password');
+      return;
+    }
+
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
     } catch (error) {
-      Alert.alert('Login Error', error.message);
+      // Invalid credentials feedback
+      if (error.code === 'auth/invalid-credential' || 
+          error.code === 'auth/invalid-email' || 
+          error.code === 'auth/wrong-password') {
+        Alert.alert('Login Error', 'Invalid email or password');
+      } else {
+        Alert.alert('Login Error', error.message);
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    // Forgot password validation
+    if (!email.trim()) {
+      Alert.alert('Validation Error', 'Please enter your email to proceed');
+      return;
+    }
+
+    setResetLoading(true);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      Alert.alert('Reset Email Sent', `Password reset link sent to ${email}`);
+    } catch (error) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setResetLoading(false);
     }
   };
 
@@ -173,15 +204,22 @@ export default function LoginScreen() {
       </View>
 
       <View style={styles.forgotPasswordContainer}>
-        <TouchableOpacity>
-          <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
+        <TouchableOpacity
+          onPress={handleForgotPassword}
+          disabled={resetLoading || loading}
+        >
+          {resetLoading ? (
+            <ActivityIndicator size="small" color="#FF0000" />
+          ) : (
+            <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
+          )}
         </TouchableOpacity>
       </View>
 
       <TouchableOpacity 
         style={styles.loginScreenButton}
         onPress={handleLogin}
-        disabled={loading}
+        disabled={loading || resetLoading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
@@ -279,7 +317,7 @@ const styles = StyleSheet.create({
     width: width * 0.8,
     height: 60,
     position: 'absolute',
-    top: height * 0.7,
+    top: height * 0.75,
     alignSelf: 'center',
     borderRadius: 10,
     justifyContent: 'center',
@@ -294,7 +332,7 @@ const styles = StyleSheet.create({
     width: width * 0.45,
     height: 30,
     position: 'absolute',
-    top: height * 0.85,
+    top: height * 0.90,
     alignSelf: 'center',
     flexDirection: 'row',
     alignItems: 'center',
