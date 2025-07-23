@@ -72,7 +72,7 @@ export default function HomeScreen({ navigation }) {
     <TouchableOpacity 
       key={visit.id} 
       style={[styles.visitItem, { backgroundColor: visit.bgColor }]}
-      onPress={() => navigation.navigate('VisitDetails', { visit })}
+      onPress={() => navigation.navigate('VisitSummary', { visit })}
     >
       <View style={styles.visitInfo}>
         <Text style={styles.visitName}>{visit.name}</Text>
@@ -108,7 +108,6 @@ export default function HomeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      {/* Header with gradient */}
       <LinearGradient
         colors={['#38B6FF4D', '#80CC28']}
         start={{ x: 0, y: 0 }}
@@ -121,7 +120,6 @@ export default function HomeScreen({ navigation }) {
         />
       </LinearGradient>
 
-      {/* Metric Cards */}
       <View style={styles.metricsRow}>
         {metrics.map((metric, index) => (
           <View key={index} style={[styles.metricCard, { backgroundColor: metric.bgColor }]}>
@@ -150,7 +148,6 @@ export default function HomeScreen({ navigation }) {
         ))}
       </View>
 
-      {/* Visit Sections */}
       <ScrollView 
         style={styles.sectionsContainer}
         contentContainerStyle={styles.sectionsContent}
@@ -196,10 +193,9 @@ export default function HomeScreen({ navigation }) {
         </ExpandableSection>
       </ScrollView>
 
-      {/* Floating Action Button */}
       <TouchableOpacity 
         style={styles.startVisitButton}
-        onPress={() => navigation.navigate('NewVisit')}
+        onPress={() => navigation.navigate('VisitDetails')}
       >
         <Ionicons name="add" size={28} color="white" />
       </TouchableOpacity>
