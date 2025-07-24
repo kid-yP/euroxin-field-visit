@@ -14,6 +14,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
 import { db } from '../firebase/config';
 import { doc, updateDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Feather, Ionicons } from '@expo/vector-icons';
 
 export default function TaskDetailsScreen({ route, navigation }) {
   const { task, mode } = route.params || {};
@@ -23,7 +25,7 @@ export default function TaskDetailsScreen({ route, navigation }) {
   const [description, setDescription] = useState(task?.description || '');
   const [dueDate, setDueDate] = useState(task?.dueDate?.toDate?.() || new Date());
   const [status, setStatus] = useState(task?.status || 'pending');
-
+  const [priority, setPriority] = useState(task?.priority || 'pending');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
 
@@ -31,18 +33,63 @@ export default function TaskDetailsScreen({ route, navigation }) {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: isCreate ? 'Add Task' : 'Task Details',
-      headerRight: () =>
-        !isCreate ? null : (
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={{ marginRight: 16 }}
-          >
-            <Text style={{ color: 'red', fontSize: 16 }}>Cancel</Text>
-          </TouchableOpacity>
-        ),
+      headerTitle: isCreate ? 'Create Task' : 'Edit Task',
+      headerTitleAlign: 'center',
+      headerTitleStyle: {
+        fontFamily: 'Poppins-SemiBold',
+        fontSize: 20,
+        color: 'white',
+      },
+      headerBackground: () => (
+        <View style={styles.headerContainer}>
+          <LinearGradient
+            colors={['#38B6FF', '#80CC28']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.headerGradient}
+          />
+        </View>
+      ),
+      headerLeft: () => (
+        <TouchableOpacity 
+          onPress={handleGoBack}
+          style={styles.backButton}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
+        </TouchableOpacity>
+      ),
     });
-  }, [navigation, isCreate]);
+  }, [navigation, title, description, dueDate, status, priority]);
+
+  const handleGoBack = () => {
+    const hasChanges = 
+      title !== (task?.title || '') ||
+      description !== (task?.description || '') ||
+      dueDate.getTime() !== (task?.dueDate?.toDate?.() || new Date()).getTime() ||
+      status !== (task?.status || 'pending') ||
+      priority !== (task?.priority || 'pending');
+
+    if (!hasChanges) {
+      navigation.goBack();
+      return;
+    }
+
+    Alert.alert(
+      'Unsaved Changes',
+      'You have unsaved changes. Are you sure you want to go back?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Discard',
+          style: 'destructive',
+          onPress: () => navigation.goBack(),
+        },
+      ]
+    );
+  };
 
   const handleSave = async () => {
     if (!title.trim()) {
@@ -63,6 +110,8 @@ export default function TaskDetailsScreen({ route, navigation }) {
           description,
           dueDate,
           status,
+          priority,
+          createdAt: new Date(),
         });
       } else {
         const taskRef = doc(db, 'tasks', task.id);
@@ -71,6 +120,8 @@ export default function TaskDetailsScreen({ route, navigation }) {
           description,
           dueDate,
           status,
+          priority,
+          updatedAt: new Date(),
         });
       }
 
@@ -93,8 +144,7 @@ export default function TaskDetailsScreen({ route, navigation }) {
           onPress: async () => {
             try {
               await deleteDoc(doc(db, 'tasks', task.id));
-              Alert.alert('Deleted', 'Task has been deleted.');
-              navigation.navigate('Tasks'); // adjust if your tasks screen route name differs
+              navigation.goBack();
             } catch (error) {
               Alert.alert('Error', 'Failed to delete task.');
               console.error(error);
@@ -127,147 +177,296 @@ export default function TaskDetailsScreen({ route, navigation }) {
     }
   };
 
+  const formatDate = (date) => {
+    return date.toLocaleDateString('en-US', { 
+      month: 'short', 
+      day: 'numeric',
+      year: 'numeric'
+    });
+  };
+
+  const formatTime = (date) => {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  };
+
   return (
     <KeyboardAvoidingView
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
-        <Text style={styles.label}>Title *</Text>
-        <TextInput
-          ref={titleInputRef}
-          style={styles.input}
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Enter title"
-          autoFocus
-        />
-
-        <Text style={styles.label}>Description</Text>
-        <TextInput
-          style={[styles.input, styles.multiline]}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Enter description"
-          multiline
-        />
-
-        <Text style={styles.label}>Due Date</Text>
-        <TouchableOpacity onPress={() => setShowDatePicker(true)} style={styles.dateButton}>
-          <Text>{dueDate?.toDateString?.() || 'Pick a date'}</Text>
-        </TouchableOpacity>
-
-        {showDatePicker && (
-          <DateTimePicker
-            value={dueDate || new Date()}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleDateChange}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Task Details</Text>
+          
+          <Text style={styles.label}>Title *</Text>
+          <TextInput
+            ref={titleInputRef}
+            style={styles.input}
+            value={title}
+            onChangeText={setTitle}
+            placeholder="Enter task title"
+            placeholderTextColor="#6B778C"
           />
-        )}
 
-        <Text style={styles.label}>Time</Text>
-        <TouchableOpacity onPress={() => setShowTimePicker(true)} style={styles.dateButton}>
-          <Text>
-            {dueDate
-              ? dueDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : 'Pick a time'}
-          </Text>
-        </TouchableOpacity>
-
-        {showTimePicker && (
-          <DateTimePicker
-            value={dueDate || new Date()}
-            mode="time"
-            is24Hour={false}
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={handleTimeChange}
+          <Text style={styles.label}>Description</Text>
+          <TextInput
+            style={[styles.input, styles.multiline]}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Enter description (optional)"
+            placeholderTextColor="#6B778C"
+            multiline
           />
-        )}
-
-        <Text style={styles.label}>Status</Text>
-        <View style={styles.pickerWrapper}>
-          <Picker
-            selectedValue={status}
-            onValueChange={(itemValue) => setStatus(itemValue)}
-          >
-            <Picker.Item label="Pending" value="pending" />
-            <Picker.Item label="Completed" value="completed" />
-          </Picker>
         </View>
 
-        <TouchableOpacity style={styles.saveButton} onPress={handleSave}>
-          <Text style={styles.saveButtonText}>{isCreate ? 'Create Task' : 'Save Changes'}</Text>
-        </TouchableOpacity>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Date & Time</Text>
+          
+          <View style={styles.dateTimeRow}>
+            <View style={{ flex: 1, marginRight: 8 }}>
+              <Text style={styles.label}>Due Date</Text>
+              <TouchableOpacity 
+                onPress={() => setShowDatePicker(true)} 
+                style={styles.dateButton}
+              >
+                <Feather name="calendar" size={18} color="#007bff" />
+                <Text style={styles.dateButtonText}>{formatDate(dueDate)}</Text>
+              </TouchableOpacity>
+            </View>
 
-        {/* Delete Button only in edit mode */}
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>Time</Text>
+              <TouchableOpacity 
+                onPress={() => setShowTimePicker(true)} 
+                style={styles.dateButton}
+              >
+                <Feather name="clock" size={18} color="#007bff" />
+                <Text style={styles.dateButtonText}>{formatTime(dueDate)}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {showDatePicker && (
+            <DateTimePicker
+              value={dueDate || new Date()}
+              mode="date"
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleDateChange}
+            />
+          )}
+
+          {showTimePicker && (
+            <DateTimePicker
+              value={dueDate || new Date()}
+              mode="time"
+              is24Hour={false}
+              display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+              onChange={handleTimeChange}
+            />
+          )}
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Status</Text>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={status}
+              onValueChange={(itemValue) => setStatus(itemValue)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Pending" value="pending" />
+              <Picker.Item label="Completed" value="completed" />
+            </Picker>
+          </View>
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Priority</Text>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={priority}
+              onValueChange={(itemValue) => setPriority(itemValue)}
+              style={styles.picker}
+            >
+              <Picker.Item label="Pending" value="pending" />
+              <Picker.Item label="Urgent" value="urgent" />
+              <Picker.Item label="Scheduled" value="scheduled" />
+            </Picker>
+          </View>
+        </View>
+
         {!isCreate && (
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-            <Text style={styles.deleteButtonText}>Delete Task</Text>
+          <TouchableOpacity 
+            style={styles.deleteButton} 
+            onPress={handleDelete}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.deleteButtonText}>DELETE TASK</Text>
           </TouchableOpacity>
         )}
       </ScrollView>
+
+      <View style={styles.footer}>
+        <TouchableOpacity
+          onPress={handleSave}
+          style={styles.saveButton}
+          activeOpacity={0.8}
+        >
+          <LinearGradient
+            colors={['#38B6FF', '#80CC28']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.gradientButton}
+          >
+            <Text style={styles.saveButtonText}>
+              {isCreate ? 'CREATE TASK' : 'SAVE CHANGES'}
+            </Text>
+          </LinearGradient>
+        </TouchableOpacity>
+      </View>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flexGrow: 1,
     padding: 16,
-    backgroundColor: '#fff',
-    paddingBottom: 40,
+    backgroundColor: '#E9FFFA',
+    paddingBottom: 100,
+  },
+  headerContainer: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    overflow: 'hidden',
+  },
+  headerGradient: {
+    flex: 1,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+  },
+  backButton: {
+    marginLeft: 16,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  card: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  sectionTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    color: '#172B4D',
+    marginBottom: 16,
   },
   label: {
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-Medium',
     fontSize: 14,
-    marginTop: 16,
+    color: '#6B778C',
+    marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 8,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    padding: 14,
+    marginBottom: 16,
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#172B4D',
+    backgroundColor: '#FAFAFA',
   },
   multiline: {
-    height: 80,
+    height: 120,
     textAlignVertical: 'top',
   },
+  dateTimeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   dateButton: {
-    padding: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginTop: 8,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    padding: 14,
+    backgroundColor: '#FAFAFA',
+  },
+  dateButtonText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#172B4D',
+    marginLeft: 8,
   },
   pickerWrapper: {
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    marginTop: 8,
-  },
-  saveButton: {
-    backgroundColor: '#007bff',
-    padding: 16,
+    borderColor: '#E0E0E0',
     borderRadius: 10,
-    marginTop: 30,
-    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+    overflow: 'hidden',
   },
-  saveButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  picker: {
+    fontFamily: 'Poppins-Regular',
+    color: '#172B4D',
   },
   deleteButton: {
-    backgroundColor: '#dc3545',
+    backgroundColor: '#FF3B30',
     padding: 16,
     borderRadius: 10,
     marginTop: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+    shadowColor: '#FF3B30',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
   },
   deleteButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+    color: 'white',
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 16,
+    backgroundColor: 'white',
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  saveButton: {
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  gradientButton: {
+    padding: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  saveButtonText: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    color: 'white',
   },
 });
