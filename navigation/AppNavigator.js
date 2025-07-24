@@ -34,12 +34,14 @@ const TabBarBackground = () => (
 
 // Header Background with rounded bottom corners for specific screens
 const RoundedHeaderBackground = () => (
-  <LinearGradient
-    colors={['#38B6FF', '#80CC28']}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 0 }}
-    style={styles.roundedHeaderGradient}
-  />
+  <View style={styles.headerBackgroundContainer}>
+    <LinearGradient
+      colors={['#38B6FF', '#80CC28']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={styles.roundedHeaderGradient}
+    />
+  </View>
 );
 
 function Tabs() {
@@ -103,7 +105,7 @@ export default function AppNavigator() {
     <Stack.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: '#38B6FF',
+          backgroundColor: 'transparent',
           elevation: 0,
         },
         headerTintColor: '#fff',
@@ -145,11 +147,65 @@ export default function AppNavigator() {
       />
       
       {/* Other screens */}
-      <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
-      <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
-      <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
-      <Stack.Screen name="TaskDetails" component={TaskDetailsScreen} options={{ title: 'Task Details' }} />
-      <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ title: 'Rep Tracker' }} />
+      <Stack.Screen 
+        name="Map" 
+        component={MapScreen} 
+        options={{ 
+          title: 'POI Map',
+          headerBackground: () => <RoundedHeaderBackground />,
+          headerStyle: {
+            height: 100,
+          },
+        }} 
+      />
+      
+      <Stack.Screen 
+        name="POIDetails" 
+        component={POIDetailsScreen} 
+        options={{ 
+          title: 'POI Details',
+          headerBackground: () => <RoundedHeaderBackground />,
+          headerStyle: {
+            height: 100,
+          },
+        }} 
+      />
+      
+      <Stack.Screen 
+        name="EditVisit" 
+        component={EditVisitScreen} 
+        options={{ 
+          title: 'Review Visit',
+          headerBackground: () => <RoundedHeaderBackground />,
+          headerStyle: {
+            height: 100,
+          },
+        }} 
+      />
+      
+      <Stack.Screen 
+        name="TaskDetails" 
+        component={TaskDetailsScreen} 
+        options={{ 
+          title: 'Task Details',
+          headerBackground: () => <RoundedHeaderBackground />,
+          headerStyle: {
+            height: 100,
+          },
+        }} 
+      />
+      
+      <Stack.Screen 
+        name="RepTracking" 
+        component={RepTrackingScreen} 
+        options={{ 
+          title: 'Rep Tracker',
+          headerBackground: () => <RoundedHeaderBackground />,
+          headerStyle: {
+            height: 100,
+          },
+        }} 
+      />
     </Stack.Navigator>
   );
 }
@@ -162,10 +218,15 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 20,
     opacity: 0.9, // Reduced transparency
   },
-  roundedHeaderGradient: {
+  headerBackgroundContainer: {
     flex: 1,
+    backgroundColor: 'white',
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+    overflow: 'hidden',
+  },
+  roundedHeaderGradient: {
+    flex: 1,
   },
   // VisitSummary bottom buttons
   bottomButtonContainer: {
