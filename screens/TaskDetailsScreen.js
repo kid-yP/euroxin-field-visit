@@ -37,19 +37,9 @@ export default function TaskDetailsScreen({ route, navigation }) {
       headerTitleAlign: 'center',
       headerTitleStyle: {
         fontFamily: 'Poppins-SemiBold',
-        fontSize: 20,
+        fontSize: 18,
         color: 'white',
       },
-      headerBackground: () => (
-        <View style={styles.headerContainer}>
-          <LinearGradient
-            colors={['#38B6FF', '#80CC28']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.headerGradient}
-          />
-        </View>
-      ),
       headerLeft: () => (
         <TouchableOpacity 
           onPress={handleGoBack}
@@ -334,16 +324,6 @@ const styles = StyleSheet.create({
     padding: 16,
     backgroundColor: '#E9FFFA',
     paddingBottom: 100,
-  },
-  headerContainer: {
-    flex: 1,
-    backgroundColor: 'transparent',
-    overflow: 'hidden',
-  },
-  headerGradient: {
-    flex: 1,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
   },
   backButton: {
     marginLeft: 16,
