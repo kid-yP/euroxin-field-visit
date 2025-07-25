@@ -3,9 +3,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
 
-// Screens
+// Screen Imports
 import HomeScreen from '../screens/HomeScreen';
 import StockScreen from '../screens/StockScreen';
 import ProfileScreen from '../screens/ProfileScreen';
@@ -22,79 +22,117 @@ import RepTrackingScreen from '../screens/RepTrackingScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
-// Tab Bar Background with reduced transparency
-const TabBarBackground = () => (
-  <LinearGradient
-    colors={['#38B6FF', '#80CC28']}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 0 }}
-    style={styles.tabBarGradient}
-  />
-);
-
-// Header Background with rounded bottom corners for specific screens
-const RoundedHeaderBackground = () => (
-  <View style={styles.headerBackgroundContainer}>
+// Custom Header Component
+const CustomHeader = ({ navigation, route, options }) => {
+  const title = options.title || route.name;
+  
+  return (
     <LinearGradient
-      colors={['#38B6FF', '#80CC28']}
+      colors={['#38B6FF4D', '#80CC28']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={styles.roundedHeaderGradient}
-    />
-  </View>
-);
+      style={styles.headerGradient}
+    >
+      <View style={styles.headerContent}>
+        {navigation.canGoBack() ? (
+          <TouchableOpacity 
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={24} color="white" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backButtonPlaceholder} />
+        )}
+        <Text style={styles.headerTitle}>{title}</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+    </LinearGradient>
+  );
+};
+
+// Custom Tab Bar with Updated Labels
+const CustomTabBar = ({ state, descriptors, navigation }) => {
+  const getTabLabel = (routeName) => {
+    const labels = {
+      'Knowledge': 'Resources',
+      'Stock': 'Stocks'
+    };
+    return labels[routeName] || routeName;
+  };
+
+  return (
+    <LinearGradient
+      colors={['#38B6FF4D', '#80CC28']}
+      start={{ x: 0, y: 0 }}
+      end={{ x: 1, y: 0 }}
+      style={styles.tabBarGradient}
+    >
+      <View style={styles.tabBarContainer}>
+        {state.routes.map((route, index) => {
+          const { options } = descriptors[route.key];
+          const isFocused = state.index === index;
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          const iconName = {
+            'Home': isFocused ? 'home' : 'home-outline',
+            'Tasks': isFocused ? 'checkbox' : 'checkbox-outline',
+            'Stocks': isFocused ? 'cube' : 'cube-outline',
+            'Hub': isFocused ? 'book' : 'book-outline',
+            'Profile': isFocused ? 'person' : 'person-outline',
+          }[route.name];
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              accessibilityRole="button"
+              accessibilityState={isFocused ? { selected: true } : {}}
+              accessibilityLabel={options.tabBarAccessibilityLabel}
+              onPress={onPress}
+              style={styles.tabButton}
+            >
+              <Ionicons 
+                name={iconName} 
+                size={24} 
+                color={isFocused ? '#fff' : 'rgba(255,255,255,0.7)'} 
+              />
+              <Text style={[
+                styles.tabLabel,
+                { color: isFocused ? '#fff' : 'rgba(255,255,255,0.7)' }
+              ]}>
+                {getTabLabel(route.name)}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </LinearGradient>
+  );
+};
 
 function Tabs() {
   return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      tabBar={(props) => <CustomTabBar {...props} />}
+      screenOptions={{
         headerShown: false,
-        tabBarIcon: ({ focused, color, size }) => {
-          let iconName;
-          
-          switch (route.name) {
-            case 'Home': iconName = focused ? 'home' : 'home-outline'; break;
-            case 'Tasks': iconName = focused ? 'checkbox' : 'checkbox-outline'; break;
-            case 'Stock': iconName = focused ? 'cube' : 'cube-outline'; break;
-            case 'Profile': iconName = focused ? 'person' : 'person-outline'; break;
-            case 'Knowledge': iconName = focused ? 'book' : 'book-outline'; break;
-            default: iconName = 'circle';
-          }
-          
-          return (
-            <Ionicons 
-              name={iconName} 
-              size={24} 
-              color={focused ? '#fff' : 'rgba(255,255,255,0.7)'} 
-            />
-          );
-        },
-        tabBarActiveTintColor: '#fff',
-        tabBarInactiveTintColor: 'rgba(255,255,255,0.7)',
-        tabBarLabelStyle: { 
-          fontSize: 12,
-          fontFamily: 'Poppins-Medium',
-          marginBottom: 4,
-        },
-        tabBarStyle: {
-          height: 70,
-          borderTopWidth: 0,
-          backgroundColor: 'rgba(56, 182, 255, 0.9)', // Reduced transparency
-          elevation: 0,
-          position: 'absolute',
-        },
-        tabBarBackground: () => <TabBarBackground />,
-        tabBarItemStyle: {
-          borderRadius: 0,
-          padding: 0,
-          margin: 0,
-        },
-      })}
+      }}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Tasks" component={TaskListScreen} />
-      <Tab.Screen name="Stock" component={StockScreen} />
-      <Tab.Screen name="Knowledge" component={KnowledgeCenterScreen} />
+      <Tab.Screen name="Stocks" component={StockScreen} />
+      <Tab.Screen name="Hub" component={KnowledgeCenterScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -104,20 +142,17 @@ export default function AppNavigator() {
   return (
     <Stack.Navigator
       screenOptions={{
+        header: ({ navigation, route, options }) => (
+          <CustomHeader 
+            navigation={navigation}
+            route={route}
+            options={options}
+          />
+        ),
         headerStyle: {
-          backgroundColor: 'transparent',
+          height: 70,
           elevation: 0,
         },
-        headerTintColor: '#fff',
-        headerTitleStyle: {
-          fontFamily: 'Poppins-SemiBold',
-          fontSize: 18,
-        },
-        headerTitleAlign: 'center',
-        headerBackTitleVisible: false,
-        headerBackImage: ({ tintColor }) => (
-          <Ionicons name="chevron-back" size={24} color={tintColor} style={{ marginLeft: 10 }} />
-        ),
       }}
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
@@ -125,139 +160,111 @@ export default function AppNavigator() {
       <Stack.Screen 
         name="VisitSummary" 
         component={VisitSummaryScreen} 
-        options={{ 
-          title: 'Visit Summary',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
+        options={{ title: 'Visit Summary' }} 
       />
       
       <Stack.Screen 
         name="VisitDetails" 
         component={VisitDetailsScreen} 
-        options={{ 
-          title: 'New Visit',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
-      />
-      
-      {/* Other screens */}
-      <Stack.Screen 
-        name="Map" 
-        component={MapScreen} 
-        options={{ 
-          title: 'POI Map',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
-      />
-      
-      <Stack.Screen 
-        name="POIDetails" 
-        component={POIDetailsScreen} 
-        options={{ 
-          title: 'POI Details',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
-      />
-      
-      <Stack.Screen 
-        name="EditVisit" 
-        component={EditVisitScreen} 
-        options={{ 
-          title: 'Review Visit',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
+        options={{ title: 'New Visit' }} 
       />
       
       <Stack.Screen 
         name="TaskDetails" 
         component={TaskDetailsScreen} 
-        options={{ 
-          title: 'Task Details',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
+        options={({ route }) => ({ 
+          title: route.params?.mode === 'create' ? 'Create Task' : 'Edit Task',
+        })} 
+      />
+      
+      <Stack.Screen 
+        name="Map" 
+        component={MapScreen} 
+        options={{ title: 'POI Map' }} 
+      />
+      
+      <Stack.Screen 
+        name="POIDetails" 
+        component={POIDetailsScreen} 
+        options={{ title: 'POI Details' }} 
+      />
+      
+      <Stack.Screen 
+        name="EditVisit" 
+        component={EditVisitScreen} 
+        options={{ title: 'Review Visit' }} 
       />
       
       <Stack.Screen 
         name="RepTracking" 
         component={RepTrackingScreen} 
-        options={{ 
-          title: 'Rep Tracker',
-          headerBackground: () => <RoundedHeaderBackground />,
-          headerStyle: {
-            height: 100,
-          },
-        }} 
+        options={{ title: 'Rep Tracker' }} 
       />
     </Stack.Navigator>
   );
 }
 
 const styles = StyleSheet.create({
-  tabBarGradient: {
-    height: '100%',
+  // Header Styles
+  headerGradient: {
     width: '100%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    opacity: 0.9, // Reduced transparency
+    height: 70,
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    justifyContent: 'center',
+    paddingHorizontal: 24,
   },
-  headerBackgroundContainer: {
-    flex: 1,
-    backgroundColor: 'white',
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    overflow: 'hidden',
-  },
-  roundedHeaderGradient: {
-    flex: 1,
-  },
-  // VisitSummary bottom buttons
-  bottomButtonContainer: {
-    position: 'absolute',
-    bottom: 20,
-    left: 20,
-    right: 20,
+  headerContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-  },
-  leftButton: {
-    backgroundColor: '#38B6FF',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    flex: 1,
-    marginRight: 10,
     alignItems: 'center',
   },
-  rightButton: {
-    backgroundColor: '#88d82cff',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 10,
-    flex: 1,
-    marginLeft: 10,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: '#fff',
+  headerTitle: {
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 16,
+    fontSize: 20,
+    color: 'white',
+    textAlign: 'center',
+    flex: 1,
+    marginHorizontal: 10,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+  },
+  backButtonPlaceholder: {
+    width: 40,
+    height: 40,
+  },
+  headerSpacer: {
+    width: 40,
+  },
+
+  // Tab Bar Styles
+  tabBarGradient: {
+    height: 60,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    elevation: 0,
+  },
+  tabBarContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    height: '100%',
+  },
+  tabButton: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  tabLabel: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+    marginTop: 4,
   },
 });
