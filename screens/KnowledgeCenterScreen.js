@@ -9,8 +9,12 @@ import {
   RefreshControl,
   Alert,
   Linking,
+  Modal,
+  Animated,
+  Easing
 } from 'react-native';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   collection,
   query,
@@ -21,14 +25,45 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
-export default function KnowledgeCenterScreen() {
+export default function KnowledgeCenterScreen({ navigation }) {
   const [data, setData] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [search, setSearch] = useState('');
-  const [selectedTab, setSelectedTab] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [selectedType, setSelectedType] = useState('all');
   const [bookmarkedIds, setBookmarkedIds] = useState([]);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const [showSearchBar, setShowSearchBar] = useState(false);
+  const [searchBarHeight] = useState(new Animated.Value(0));
+
+  const categories = [
+    { label: 'All', value: 'all' },
+    { label: 'Sales', value: 'sales' },
+    { label: 'Products', value: 'products' },
+    { label: 'Procedures', value: 'procedures' },
+    { label: 'Training', value: 'training' },
+  ];
+
+  const types = [
+    { label: 'All', value: 'all' },
+    { label: 'Articles', value: 'articles' },
+    { label: 'PDFs', value: 'pdfs' },
+    { label: 'Videos', value: 'videos' },
+    { label: 'Links', value: 'links' },
+  ];
+
+  const toggleSearchBar = () => {
+    setShowSearchBar(!showSearchBar);
+    Animated.timing(searchBarHeight, {
+      toValue: showSearchBar ? 0 : 40,
+      duration: 300,
+      easing: Easing.ease,
+      useNativeDriver: false,
+    }).start();
+  };
 
   const fetchBookmarks = async () => {
     try {
@@ -37,13 +72,9 @@ export default function KnowledgeCenterScreen() {
 
       const userRef = doc(db, 'users', uid);
       const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        setBookmarkedIds(userSnap.data()?.bookmarkedItems || []);
-      } else {
-        setBookmarkedIds([]);
-      }
+      setBookmarkedIds(userSnap.exists() ? userSnap.data().bookmarkedItems || [] : []);
     } catch (error) {
-      console.error('Failed to load bookmarks:', error);
+      console.error('Bookmark error:', error);
     }
   };
 
@@ -56,10 +87,10 @@ export default function KnowledgeCenterScreen() {
         ...doc.data(),
       }));
       setData(list);
-      filterByTabAndSearch(list, selectedTab, search);
+      filterData(list, selectedCategory, selectedType, searchQuery);
     } catch (err) {
       console.error('Fetch error:', err);
-      Alert.alert('Error', 'Failed to load knowledge center data.');
+      Alert.alert('Error', 'Failed to load data');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -77,27 +108,47 @@ export default function KnowledgeCenterScreen() {
     fetchBookmarks();
   }, []);
 
-  const filterByTabAndSearch = (source, tab, searchText) => {
+  const filterData = (source, category, type, query) => {
     let list = [...source];
-    if (tab !== 'all') {
-      list = list.filter(item => item.type === tab);
-    }
-    if (searchText) {
+    
+    if (category !== 'all') list = list.filter(item => item.category === category);
+    if (type !== 'all') list = list.filter(item => item.type === type);
+    if (query) {
+      const lowerQuery = query.toLowerCase();
       list = list.filter(item =>
-        item.title.toLowerCase().includes(searchText.toLowerCase())
+        item.title.toLowerCase().includes(lowerQuery) ||
+        (item.description && item.description.toLowerCase().includes(lowerQuery))
       );
     }
+    
     setFiltered(list);
   };
 
   const handleSearch = (text) => {
-    setSearch(text);
-    filterByTabAndSearch(data, selectedTab, text);
+    setSearchQuery(text);
+    filterData(data, selectedCategory, selectedType, text);
   };
 
-  const handleTabChange = (tab) => {
-    setSelectedTab(tab);
-    filterByTabAndSearch(data, tab, search);
+  const handleCategorySelect = (value) => {
+    setSelectedCategory(value);
+    setShowCategoryDropdown(false);
+    filterData(data, value, selectedType, searchQuery);
+  };
+
+  const handleTypeSelect = (value) => {
+    setSelectedType(value);
+    setShowTypeDropdown(false);
+    filterData(data, selectedCategory, value, searchQuery);
+  };
+
+  const getTypeColor = (type) => {
+    const colors = {
+      articles: '#E3F2FD',
+      pdfs: '#E8F5E9',
+      videos: '#FFEBEE',
+      links: '#FFF5E6'
+    };
+    return colors[type] || '#F5F5F5';
   };
 
   const toggleBookmark = async (itemId) => {
@@ -107,138 +158,227 @@ export default function KnowledgeCenterScreen() {
 
       const userRef = doc(db, 'users', uid);
       const userSnap = await getDoc(userRef);
-
-      let bookmarks = [];
-
-      if (userSnap.exists()) {
-        bookmarks = userSnap.data().bookmarkedItems || [];
-      }
-
-      const alreadyBookmarked = bookmarks.includes(itemId);
-      const updated = alreadyBookmarked
+      
+      let bookmarks = userSnap.exists() ? userSnap.data().bookmarkedItems || [] : [];
+      const updated = bookmarks.includes(itemId)
         ? bookmarks.filter(id => id !== itemId)
         : [...bookmarks, itemId];
 
       await setDoc(userRef, { bookmarkedItems: updated }, { merge: true });
-
       setBookmarkedIds(updated);
     } catch (err) {
-      console.error('Bookmark toggle failed:', err);
-      Alert.alert('Error', 'Failed to update bookmark.');
+      console.error('Bookmark error:', err);
     }
   };
 
-  const openLink = async (url) => {
+  const handleDownload = async (url) => {
     if (!url) {
-      Alert.alert('No link provided');
+      Alert.alert('Error', 'No download link available');
       return;
     }
 
-    // Ensure URL starts with http or https
-    const normalizedUrl = url.startsWith('http') ? url : `https://${url}`;
-
     try {
-      const supported = await Linking.canOpenURL(normalizedUrl);
+      // Check if URL has protocol, add https:// if missing
+      const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
+      
+      // Check if the link can be opened
+      const supported = await Linking.canOpenURL(formattedUrl);
+      
       if (supported) {
-        await Linking.openURL(normalizedUrl);
+        await Linking.openURL(formattedUrl);
       } else {
-        console.log('Unsupported URL:', normalizedUrl);
-        Alert.alert('Cannot open this URL:', normalizedUrl);
+        Alert.alert('Error', "Cannot open this resource");
       }
     } catch (error) {
-      console.error('Failed to open URL:', error);
-      Alert.alert('Error', 'Something went wrong while opening the link.');
+      console.error('Error opening URL:', error);
+      Alert.alert('Error', 'Failed to open resource');
     }
   };
 
   const formatTimeAgo = (timestamp) => {
     if (!timestamp?.toDate) return 'Unknown';
-    const date = timestamp.toDate();
-    const now = new Date();
-    const diff = now - date;
-    const seconds = diff / 1000;
-
-    if (seconds < 60) return `${Math.floor(seconds)} sec ago`;
-    if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds / 3600)} hr ago`;
-    return `${Math.floor(seconds / 86400)} days ago`;
+    const seconds = Math.floor((new Date() - timestamp.toDate()) / 1000);
+    
+    if (seconds < 60) return `${seconds} sec ago`;
+    if (seconds < 3600) return `${Math.floor(seconds/60)} min ago`;
+    if (seconds < 86400) return `${Math.floor(seconds/3600)} hr ago`;
+    return `${Math.floor(seconds/86400)} days ago`;
   };
 
   const renderItem = ({ item }) => (
     <View style={styles.card}>
-      <View style={styles.cardTop}>
-        <Text style={styles.title}>{item.title}</Text>
-        <TouchableOpacity onPress={() => toggleBookmark(item.id)}>
-          <Feather
-            name={bookmarkedIds.includes(item.id) ? 'bookmark' : 'bookmark'}
-            color={bookmarkedIds.includes(item.id) ? '#007bff' : '#888'}
-            size={20}
+      <View style={styles.cardHeader}>
+        <View style={[styles.typeBadge, { backgroundColor: getTypeColor(item.type) }]}>
+          <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+        </View>
+        <TouchableOpacity 
+          onPress={() => toggleBookmark(item.id)}
+          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
+        >
+          <Ionicons
+            name={bookmarkedIds.includes(item.id) ? 'bookmark' : 'bookmark-outline'}
+            size={24}
+            color={bookmarkedIds.includes(item.id) ? '#007bff' : '#6B778C'}
           />
         </TouchableOpacity>
       </View>
-      <Text style={styles.updatedText}>
-        Last updated: {formatTimeAgo(item.lastUpdated)}
-      </Text>
-
-      {(item.type === 'pdfs' || item.type === 'videos') && !!item.url && (
-        <TouchableOpacity
-          style={styles.openButton}
-          onPress={() => openLink(item.url)}
-        >
-          <Text style={styles.openButtonText}>Download / Open</Text>
-        </TouchableOpacity>
+      
+      <Text style={styles.cardTitle}>{item.title}</Text>
+      
+      {item.description && (
+        <Text style={styles.cardDescription} numberOfLines={2}>
+          {item.description}
+        </Text>
       )}
+      
+      <View style={styles.cardFooter}>
+        <Text style={styles.timeText}>{formatTimeAgo(item.lastUpdated)}</Text>
+        
+        <TouchableOpacity
+          style={styles.downloadButton}
+          onPress={() => handleDownload(item.url)}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
+          <Text style={styles.downloadButtonText}>OPEN</Text>
+          <Feather name="external-link" size={16} color="#007bff" />
+        </TouchableOpacity>
+      </View>
     </View>
   );
 
-  const tabs = ['all', 'articles', 'pdfs', 'videos', 'training'];
+  const renderDropdownItem = (item, onSelect) => (
+    <TouchableOpacity
+      style={styles.dropdownItem}
+      onPress={() => onSelect(item.value)}
+    >
+      <Text style={styles.dropdownItemText}>{item.label}</Text>
+    </TouchableOpacity>
+  );
 
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>Knowledge Center</Text>
-
-      <View style={styles.searchContainer}>
-        <Feather name="search" size={18} color="#999" style={styles.searchIcon} />
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search articles, PDFs, videos..."
-          value={search}
-          onChangeText={handleSearch}
-        />
-      </View>
-
-      <View style={styles.tabs}>
-        {tabs.map(tab => (
+      <LinearGradient
+        colors={['#38B6FF4D', '#80CC28']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Knowledge Center</Text>
           <TouchableOpacity
-            key={tab}
-            style={[styles.tab, selectedTab === tab && styles.activeTab]}
-            onPress={() => handleTabChange(tab)}
+            style={styles.searchButton}
+            onPress={toggleSearchBar}
           >
-            <Text
-              style={[
-                styles.tabText,
-                selectedTab === tab && styles.activeTabText,
-              ]}
-            >
-              {tab.toUpperCase()}
-            </Text>
+            <Feather name="search" size={24} color="white" />
           </TouchableOpacity>
-        ))}
+        </View>
+      </LinearGradient>
+
+      <Animated.View style={[styles.searchContainer, { height: searchBarHeight }]}>
+        <View style={styles.searchInnerContainer}>
+          <Feather name="search" size={20} color="#6B778C" style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search resources..."
+            value={searchQuery}
+            onChangeText={handleSearch}
+            returnKeyType="search"
+            autoFocus={showSearchBar}
+          />
+          {showSearchBar && (
+            <TouchableOpacity onPress={toggleSearchBar}>
+              <Feather name="x" size={20} color="#6B778C" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </Animated.View>
+
+      <View style={styles.filterRow}>
+        <View style={styles.filterContainer}>
+          <Text style={styles.filterLabel}>Category</Text>
+          <TouchableOpacity 
+            style={styles.filterBox}
+            onPress={() => setShowCategoryDropdown(true)}
+          >
+            <Text style={styles.filterValue}>
+              {categories.find(c => c.value === selectedCategory)?.label}
+            </Text>
+            <Feather name="chevron-down" size={16} color="#007bff" />
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.filterContainer}>
+          <Text style={styles.filterLabel}>Type</Text>
+          <TouchableOpacity 
+            style={styles.filterBox}
+            onPress={() => setShowTypeDropdown(true)}
+          >
+            <Text style={styles.filterValue}>
+              {types.find(t => t.value === selectedType)?.label}
+            </Text>
+            <Feather name="chevron-down" size={16} color="#007bff" />
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* Category Dropdown Modal */}
+      <Modal
+        visible={showCategoryDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowCategoryDropdown(false)}
+      >
+        <TouchableOpacity 
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setShowCategoryDropdown(false)}
+        >
+          <View style={styles.dropdownContainer}>
+            {categories.map(item => renderDropdownItem(item, handleCategorySelect))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Type Dropdown Modal */}
+      <Modal
+        visible={showTypeDropdown}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTypeDropdown(false)}
+      >
+        <TouchableOpacity 
+          style={styles.dropdownOverlay}
+          activeOpacity={1}
+          onPress={() => setShowTypeDropdown(false)}
+        >
+          <View style={styles.dropdownContainer}>
+            {types.map(item => renderDropdownItem(item, handleTypeSelect))}
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       <FlatList
         data={filtered}
-        keyExtractor={item => item.id}
         renderItem={renderItem}
+        keyExtractor={item => item.id}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+          <RefreshControl 
+            refreshing={refreshing} 
+            onRefresh={onRefresh}
+            colors={['#007bff']}
+            tintColor="#007bff"
+          />
         }
         ListEmptyComponent={
           !loading && (
-            <Text style={styles.emptyText}>No content available.</Text>
+            <View style={styles.emptyState}>
+              <Feather name="book-open" size={48} color="#6B778C" />
+              <Text style={styles.emptyText}>No resources found</Text>
+            </View>
           )
         }
-        contentContainerStyle={{ paddingBottom: 80 }}
+        contentContainerStyle={styles.listContent}
+        style={styles.list}
       />
     </View>
   );
@@ -246,92 +386,182 @@ export default function KnowledgeCenterScreen() {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 16,
-    backgroundColor: '#fff',
     flex: 1,
+    backgroundColor: '#E9FFFA',
   },
   header: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 12,
+    height: 70,
+    justifyContent: 'center',
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  headerTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 18,
+    color: 'white',
+    left: 6,
+  },
+  searchButton: {
+    padding: 8,
   },
   searchContainer: {
+    overflow: 'hidden',
+    marginHorizontal: 16,
+    marginTop: 10, // Added space between header and search bar
+  },
+  searchInnerContainer: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 10,
-    paddingHorizontal: 10,
     alignItems: 'center',
-    marginBottom: 12,
+    backgroundColor: 'white',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    height: 40,
+    elevation: 2,
   },
   searchIcon: {
-    marginRight: 6,
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
-    height: 40,
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
   },
-  tabs: {
+  filterRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
     marginBottom: 12,
+    marginTop: 8,
   },
-  tab: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: '#eee',
-    borderRadius: 20,
-    marginRight: 8,
+  filterContainer: {
+    width: '48%',
+  },
+  filterLabel: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#6B778C',
     marginBottom: 8,
+    marginLeft: 4,
   },
-  activeTab: {
-    backgroundColor: '#007bff',
+  filterBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'white',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
   },
-  tabText: {
-    color: '#333',
-    fontSize: 12,
+  filterValue: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#172B4D',
   },
-  activeTabText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  dropdownContainer: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    width: '80%',
+    maxHeight: '60%',
+    paddingVertical: 8,
+  },
+  dropdownItem: {
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  dropdownItemText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 16,
+    color: '#172B4D',
+  },
+  list: {
+    flex: 1,
+    paddingBottom: 20,
+  },
+  listContent: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    flexGrow: 1,
   },
   card: {
-    padding: 14,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: 'white',
     borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    elevation: 2,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 12,
   },
-  cardTop: {
+  typeBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  typeText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+    color: '#172B4D',
+  },
+  cardTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
+    color: '#172B4D',
+    marginBottom: 8,
+  },
+  cardDescription: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#6B778C',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  cardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
   },
-  title: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    flexShrink: 1,
+  timeText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 12,
+    color: '#6B778C',
   },
-  updatedText: {
-    marginTop: 6,
-    fontSize: 13,
-    color: '#555',
-  },
-  openButton: {
-    marginTop: 10,
-    backgroundColor: '#007bff',
-    paddingVertical: 8,
-    borderRadius: 8,
+  downloadButton: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  openButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
+  downloadButtonText: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 14,
+    color: '#007bff',
+    marginRight: 4,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingTop: 40,
   },
   emptyText: {
-    textAlign: 'center',
-    marginTop: 40,
-    color: 'gray',
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+    color: '#6B778C',
+    marginTop: 16,
   },
 });
