@@ -10,13 +10,17 @@ import {
   ActivityIndicator,
   ScrollView,
   RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db, storage } from '../firebase/config';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { width } = Dimensions.get('window');
 
 export default function ProfileScreen({ navigation }) {
   const user = auth.currentUser;
@@ -43,7 +47,6 @@ export default function ProfileScreen({ navigation }) {
         setUserData({
           name: 'No name set',
           role: 'No role set',
-          phone: 'Not set',
           photoURL: null,
         });
       }
@@ -154,181 +157,276 @@ export default function ProfileScreen({ navigation }) {
   }
 
   return (
-    <ScrollView
-      contentContainerStyle={styles.container}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      keyboardShouldPersistTaps="handled"
-    >
-      <Text style={styles.header}>Account</Text>
+    <View style={styles.mainContainer}>
+      {/* Header with gradient */}
+      <LinearGradient
+        colors={['#38B6FF4D', '#80CC28']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.header}
+      >
+        <View style={styles.headerContent}>
+          <Text style={styles.headerTitle}>Profile</Text>
+        </View>
+      </LinearGradient>
 
-      <TouchableOpacity style={styles.avatarContainer} onPress={pickImage} activeOpacity={0.7}>
-        <View style={styles.avatarWrapper}>
-          <Image
-            source={{
-              uri: userData?.photoURL || 'https://placehold.co/100x100?text=Avatar',
-            }}
-            style={styles.avatar}
-          />
-          <View style={styles.editIconWrapper}>
-            <Feather name="edit-2" size={22} color="#007bff" />
+      <ScrollView
+        contentContainerStyle={styles.scrollContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Profile Info Card */}
+        <View style={styles.profileCard}>
+          <View style={styles.profileRow}>
+            <TouchableOpacity onPress={pickImage} activeOpacity={0.7}>
+              <View style={styles.avatarWrapper}>
+                <Image
+                  source={{
+                    uri: userData?.photoURL || 'https://placehold.co/100x100?text=Avatar',
+                  }}
+                  style={styles.avatar}
+                />
+                <View style={styles.editIconWrapper}>
+                  <Feather name="edit-2" size={16} color="white" />
+                </View>
+              </View>
+            </TouchableOpacity>
+            
+            <View style={styles.profileInfo}>
+              <Text style={styles.name}>{userData?.name || 'Name not set'}</Text>
+              <Text style={styles.email}>{user.email}</Text>
+              <Text style={styles.role}>{userData?.role || 'Role not set'}</Text>
+            </View>
           </View>
         </View>
-      </TouchableOpacity>
 
-      <Text style={styles.name}>{userData?.name || 'Name not set'}</Text>
-      <Text style={styles.role}>{userData?.role || 'Role not set'}</Text>
-      <Text style={styles.id}>ID: {user.uid}</Text>
+        {/* Settings Card */}
+        <View style={styles.settingsCard}>
+          <Text style={styles.sectionTitle}>Settings</Text>
+          
+          <View style={styles.settingItem}>
+            <View style={styles.settingText}>
+              <Feather name="bell" size={20} color="#6B778C" />
+              <Text style={styles.settingLabel}>Notifications</Text>
+            </View>
+            <Switch 
+              value={notificationsEnabled} 
+              onValueChange={toggleNotifications}
+              trackColor={{ false: "#E0E0E0", true: "#007bff" }}
+            />
+          </View>
 
-      <View style={styles.infoBox}>
-        <Text style={styles.label}>Email</Text>
-        <Text style={styles.info}>{user.email}</Text>
-      </View>
+          <View style={styles.settingItem}>
+            <View style={styles.settingText}>
+              <Feather name="globe" size={20} color="#6B778C" />
+              <Text style={styles.settingLabel}>Language</Text>
+            </View>
+            <View style={styles.languagePickerWrapper}>
+              <Text style={styles.currentLanguage}>
+                {language === 'en' ? 'English' : 
+                 language === 'am' ? 'Amharic' : 
+                 language === 'fr' ? 'French' : 
+                 language === 'ar' ? 'Arabic' : 'Deutsch'}
+              </Text>
+              <Picker
+                selectedValue={language}
+                onValueChange={(itemValue) => setLanguage(itemValue)}
+                style={styles.languagePicker}
+                dropdownIconColor="#007bff"
+              >
+                <Picker.Item label="English" value="en" />
+                <Picker.Item label="Amharic" value="am" />
+                <Picker.Item label="French" value="fr" />
+                <Picker.Item label="Arabic" value="ar" />
+                <Picker.Item label="Deutsch" value="de" />
+              </Picker>
+            </View>
+          </View>
 
-      <View style={styles.infoBox}>
-        <Text style={styles.label}>Phone</Text>
-        <Text style={styles.info}>{userData?.phone || 'Not set'}</Text>
-      </View>
-
-      <View style={styles.settingsRow}>
-        <Text style={styles.label}>Notifications</Text>
-        <Switch value={notificationsEnabled} onValueChange={toggleNotifications} />
-      </View>
-
-      {/* Language Picker */}
-      <View style={{ marginTop: 16 }}>
-        <Text style={styles.label}>Language</Text>
-        <View style={styles.languagePickerWrapper}>
-          <Picker
-            selectedValue={language}
-            onValueChange={(itemValue) => setLanguage(itemValue)}
-            style={styles.languagePicker}
-            dropdownIconColor="#000"
-          >
-            <Picker.Item label="English" value="en" />
-            <Picker.Item label="Amharic" value="am" />
-            <Picker.Item label="French" value="fr" />
-            <Picker.Item label="Arabic" value="ar" />
-            <Picker.Item label="Deutsch" value="de" />
-          </Picker>
+          {/* Version Info inside Settings Card */}
+          <View style={styles.settingItem}>
+            <View style={styles.settingText}>
+              <Feather name="info" size={20} color="#6B778C" />
+              <Text style={styles.settingLabel}>App Version</Text>
+            </View>
+            <Text style={styles.versionText}>1.0.0</Text>
+          </View>
         </View>
-      </View>
 
-      <Text style={styles.version}>Version 1.0.0</Text>
-
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Log Out</Text>
-      </TouchableOpacity>
-
-      <View style={{ height: 40 }} />
-    </ScrollView>
+        {/* Logout Button - Fixed position */}
+        <View style={styles.logoutButtonContainer}>
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={24} color="white" />
+            <Text style={styles.logoutText}>Log Out</Text>
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    padding: 20,
-    backgroundColor: '#fff',
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#E9FFFA',
+  },
+  header: {
+    height: 70,
+    justifyContent: 'center',
+    borderBottomRightRadius: 20,
+    borderBottomLeftRadius: 20,
+    paddingHorizontal: 20,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  headerTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 18,
+    color: 'white',
+    left: 6,
+    letterSpacing: 0.6,
+  },
+  scrollContainer: {
+    padding: 16,
+    paddingTop: 20,
+    paddingBottom: 120, // Extra padding to ensure logout button is visible
   },
   center: {
     justifyContent: 'center',
     alignItems: 'center',
     flex: 1,
   },
-  header: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 20,
+  profileCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
   },
-  avatarContainer: {
+  profileRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
   },
   avatarWrapper: {
     position: 'relative',
+    marginRight: 16,
   },
   avatar: {
-    width: 110,
-    height: 110,
-    borderRadius: 55,
-    backgroundColor: '#ccc',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: '#f0f0f0',
   },
   editIconWrapper: {
     position: 'absolute',
-    bottom: 4,
-    right: 4,
-    backgroundColor: '#fff',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#007bff',
     borderRadius: 12,
-    padding: 2,
+    padding: 4,
     elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3,
-    shadowRadius: 1,
+  },
+  profileInfo: {
+    flex: 1,
   },
   name: {
-    fontSize: 20,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  role: {
-    fontSize: 16,
-    color: 'gray',
-    textAlign: 'center',
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 18,
+    color: '#172B4D',
     marginBottom: 4,
   },
-  id: {
+  email: {
+    fontFamily: 'Poppins-Regular',
     fontSize: 14,
-    color: 'gray',
-    textAlign: 'center',
-    marginBottom: 20,
+    color: '#6B778C',
+    marginBottom: 4,
   },
-  infoBox: {
-    backgroundColor: '#f0f0f0',
-    padding: 14,
-    borderRadius: 10,
-    marginBottom: 14,
+  role: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#007bff',
   },
-  label: {
-    fontWeight: '600',
-    marginBottom: 6,
+  settingsCard: {
+    backgroundColor: 'white',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
   },
-  info: {
+  sectionTitle: {
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+    color: '#172B4D',
+    marginBottom: 16,
   },
-  settingsRow: {
+  settingItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderColor: '#ccc',
-    marginBottom: 10,
+    borderBottomColor: '#f0f0f0',
   },
-  languagePickerWrapper: {
-    backgroundColor: '#f0f0f0',
-    borderRadius: 10,
-    marginBottom: 16,
-    paddingHorizontal: 10,
-  },
-  languagePicker: {
-    height: 44,
-    flex: 1,
-  },
-  version: {
-    textAlign: 'center',
-    color: 'gray',
-    marginBottom: 20,
-  },
-  logoutButton: {
-    backgroundColor: '#dc3545',
-    padding: 14,
-    borderRadius: 12,
+  settingText: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
+  settingLabel: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#172B4D',
+    marginLeft: 12,
+  },
+  languagePickerWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  currentLanguage: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#007bff',
+    marginRight: 8,
+  },
+  languagePicker: {
+    width: 0,
+    height: 0,
+    opacity: 0,
+  },
+  versionText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#6B778C',
+  },
+  logoutButtonContainer: {
+    width: width - 32,
+    marginHorizontal: 13,
+    position: 'absolute',
+    bottom: 70,
+  },
+  logoutButton: {
+    width: 290,
+    height: 45,
+    backgroundColor: '#FF3B30',
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    left: 3,
+    top: -6,
+  },
   logoutText: {
-    color: '#fff',
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
+    color: 'white',
+    marginLeft: 8,
   },
 });
