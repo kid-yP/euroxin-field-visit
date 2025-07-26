@@ -168,7 +168,7 @@ export default function AppNavigator() {
         title: route.params?.mode === 'create' ? 'Create Task' : 'Edit Task',
       })} />
       <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
-      <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
+      <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Map' }} />
       <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
       <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ 
         title: 'Rep Tracking',
