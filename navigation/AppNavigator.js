@@ -22,6 +22,8 @@ import RepTrackingScreen from '../screens/RepTrackingScreen';
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
+const HEADER_HEIGHT = 70;
+
 // Custom Header Component
 const CustomHeader = ({ navigation, route, options }) => {
   const title = options.title || route.name;
@@ -31,7 +33,7 @@ const CustomHeader = ({ navigation, route, options }) => {
       colors={['#38B6FF4D', '#80CC28']}
       start={{ x: 0, y: 0 }}
       end={{ x: 1, y: 0 }}
-      style={styles.headerGradient}
+      style={[styles.headerGradient, { height: HEADER_HEIGHT }]}
     >
       <View style={styles.headerContent}>
         {navigation.canGoBack() ? (
@@ -44,14 +46,18 @@ const CustomHeader = ({ navigation, route, options }) => {
         ) : (
           <View style={styles.backButtonPlaceholder} />
         )}
-        <Text style={styles.headerTitle}>{title}</Text>
+        
+        <View style={styles.titleContainer}>
+          <Text style={styles.headerTitle}>{title}</Text>
+        </View>
+        
         <View style={styles.headerSpacer} />
       </View>
     </LinearGradient>
   );
 };
 
-// Custom Tab Bar with Updated Labels
+// Custom Tab Bar
 const CustomTabBar = ({ state, descriptors, navigation }) => {
   const getTabLabel = (routeName) => {
     const labels = {
@@ -150,56 +156,23 @@ export default function AppNavigator() {
           />
         ),
         headerStyle: {
-          height: 70,
+          height: HEADER_HEIGHT,
           elevation: 0,
         },
       }}
     >
       <Stack.Screen name="Tabs" component={Tabs} options={{ headerShown: false }} />
-      
-      <Stack.Screen 
-        name="VisitSummary" 
-        component={VisitSummaryScreen} 
-        options={{ title: 'Visit Summary' }} 
-      />
-      
-      <Stack.Screen 
-        name="VisitDetails" 
-        component={VisitDetailsScreen} 
-        options={{ title: 'New Visit' }} 
-      />
-      
-      <Stack.Screen 
-        name="TaskDetails" 
-        component={TaskDetailsScreen} 
-        options={({ route }) => ({ 
-          title: route.params?.mode === 'create' ? 'Create Task' : 'Edit Task',
-        })} 
-      />
-      
-      <Stack.Screen 
-        name="Map" 
-        component={MapScreen} 
-        options={{ title: 'POI Map' }} 
-      />
-      
-      <Stack.Screen 
-        name="POIDetails" 
-        component={POIDetailsScreen} 
-        options={{ title: 'POI Details' }} 
-      />
-      
-      <Stack.Screen 
-        name="EditVisit" 
-        component={EditVisitScreen} 
-        options={{ title: 'Review Visit' }} 
-      />
-      
-      <Stack.Screen 
-        name="RepTracking" 
-        component={RepTrackingScreen} 
-        options={{ title: 'Rep Tracker' }} 
-      />
+      <Stack.Screen name="VisitSummary" component={VisitSummaryScreen} options={{ title: 'Visit Summary' }} />
+      <Stack.Screen name="VisitDetails" component={VisitDetailsScreen} options={{ title: 'New Visit' }} />
+      <Stack.Screen name="TaskDetails" component={TaskDetailsScreen} options={({ route }) => ({ 
+        title: route.params?.mode === 'create' ? 'Create Task' : 'Edit Task',
+      })} />
+      <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
+      <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Details' }} />
+      <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
+      <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ 
+        title: 'Rep Tracking',
+      }} />
     </Stack.Navigator>
   );
 }
@@ -208,24 +181,31 @@ const styles = StyleSheet.create({
   // Header Styles
   headerGradient: {
     width: '100%',
-    height: 70,
     borderBottomRightRadius: 20,
     borderBottomLeftRadius: 20,
     justifyContent: 'center',
-    paddingHorizontal: 24,
+    paddingHorizontal: 16,
   },
   headerContent: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  titleContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 40,
   },
   headerTitle: {
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 20,
+    fontSize: 18,
     color: 'white',
     textAlign: 'center',
-    flex: 1,
-    marginHorizontal: 10,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
+    left: 8,
+    top: 4,
   },
   backButton: {
     width: 40,
@@ -234,10 +214,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(255,255,255,0.2)',
+    position: 'absolute',
+    left: 4,
+    zIndex: 1,
   },
   backButtonPlaceholder: {
     width: 40,
-    height: 40,
   },
   headerSpacer: {
     width: 40,
