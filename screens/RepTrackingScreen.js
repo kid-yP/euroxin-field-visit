@@ -1,4 +1,3 @@
-// screens/RepTrackingScreen.js
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -7,13 +6,16 @@ import {
   ScrollView,
   Image,
   TouchableOpacity,
+  Dimensions,
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
-export default function RepTrackingScreen() {
+const { width } = Dimensions.get('window');
+
+export default function RepTrackingScreen({ navigation }) {
   const [reps, setReps] = useState([]);
   const [region, setRegion] = useState({
     latitude: 9.03,
@@ -37,15 +39,31 @@ export default function RepTrackingScreen() {
   }, []);
 
   const getStatusColor = (statusArray = []) => {
-    if (!Array.isArray(statusArray) || statusArray.length === 0) return 'red';
-    if (statusArray.includes('checked-in')) return 'green';
-    if (statusArray.includes('moving') || statusArray.includes('idle')) return 'orange';
-    return 'red';
+    if (!Array.isArray(statusArray) || statusArray.length === 0) return '#FF3B30';
+    if (statusArray.includes('checked-in')) return '#00C853';
+    if (statusArray.includes('moving') || statusArray.includes('idle')) return '#FFAB00';
+    return '#FF3B30';
   };
+
+  const getStatusText = (statusArray = []) => {
+    if (!Array.isArray(statusArray)) return 'Offline';
+    if (statusArray.includes('checked-in')) return 'Checked In';
+    if (statusArray.includes('moving')) return 'Moving';
+    if (statusArray.includes('idle')) return 'Idle';
+    return 'Offline';
+  };
+
+  const activeRepsCount = reps.filter(rep => 
+    Array.isArray(rep.currentStatus) && 
+    (rep.currentStatus.includes('checked-in') || 
+     rep.currentStatus.includes('moving') ||
+     rep.currentStatus.includes('idle'))
+  ).length;
 
   return (
     <View style={styles.container}>
-      <View style={styles.mapContainer}>
+      {/* Map Container */}
+      <View style={styles.mapBox}>
         <MapView style={styles.map} region={region}>
           {reps.map((rep) => {
             if (!rep.coords?.latitude || !rep.coords?.longitude) return null;
@@ -63,15 +81,26 @@ export default function RepTrackingScreen() {
                     : 'N/A'
                 }`}
               >
-                <Ionicons
-                  name="person-circle"
-                  size={32}
-                  color={getStatusColor(rep.currentStatus)}
-                />
+                <View style={styles.markerContainer}>
+                  <Ionicons
+                    name="person-circle"
+                    size={32}
+                    color={getStatusColor(rep.currentStatus)}
+                  />
+                  {rep.currentStatus?.includes('checked-in') && (
+                    <View style={[styles.statusPulse, { backgroundColor: getStatusColor(rep.currentStatus) }]} />
+                  )}
+                </View>
               </Marker>
             );
           })}
         </MapView>
+
+        {/* Active Reps Badge */}
+        <View style={styles.activeBadge}>
+          <Text style={styles.activeBadgeText}>{activeRepsCount}</Text>
+          <Text style={styles.activeBadgeLabel}>Active</Text>
+        </View>
 
         {/* Zoom Controls */}
         <View style={styles.zoomControls}>
@@ -80,54 +109,80 @@ export default function RepTrackingScreen() {
             onPress={() =>
               setRegion((prev) => ({
                 ...prev,
-                latitudeDelta: prev.latitudeDelta / 2,
-                longitudeDelta: prev.longitudeDelta / 2,
+                latitudeDelta: Math.max(prev.latitudeDelta / 2, 0.001),
+                longitudeDelta: Math.max(prev.longitudeDelta / 2, 0.001),
               }))
             }
           >
-            <Text style={styles.zoomText}>+</Text>
+            <Ionicons name="add" size={20} color="#007bff" />
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.zoomBtn}
             onPress={() =>
               setRegion((prev) => ({
                 ...prev,
-                latitudeDelta: prev.latitudeDelta * 2,
-                longitudeDelta: prev.longitudeDelta * 2,
+                latitudeDelta: Math.min(prev.latitudeDelta * 2, 100),
+                longitudeDelta: Math.min(prev.longitudeDelta * 2, 100),
               }))
             }
           >
-            <Text style={styles.zoomText}>-</Text>
+            <Ionicons name="remove" size={20} color="#007bff" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* Timeline View */}
-      <View style={styles.timelineContainer}>
-        <Text style={styles.timelineTitle}>All Field Reps</Text>
-        <ScrollView>
+      {/* Field Representatives Box */}
+      <View style={styles.repsContainer}>
+        <View style={styles.repsHeader}>
+          <MaterialIcons name="location-on" size={24} color="#007bff" />
+          <Text style={styles.repsTitle}>Field Representatives</Text>
+        </View>
+        
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={true}
+          contentContainerStyle={styles.repsScrollContent}
+        >
           {reps.map((rep) => (
-            <View key={rep.id} style={styles.repItem}>
-              <Image
-                source={{ uri: rep.avatarURL || 'https://via.placeholder.com/50' }}
-                style={styles.avatar}
-              />
-              <View style={styles.repInfo}>
-                <Text style={styles.repName}>{rep.name || 'Unnamed Rep'}</Text>
-                <Text style={styles.repTime}>
-                  Last Check-in:{' '}
-                  {rep.lastCheckIn?.timestamp?.toDate
-                    ? rep.lastCheckIn.timestamp.toDate().toLocaleTimeString()
-                    : 'N/A'}
+            <TouchableOpacity 
+              key={rep.id} 
+              style={styles.repCard}
+              onPress={() => {
+                if (rep.coords?.latitude && rep.coords?.longitude) {
+                  setRegion({
+                    latitude: rep.coords.latitude,
+                    longitude: rep.coords.longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  });
+                }
+              }}
+            >
+              <View style={styles.avatarContainer}>
+                <Image
+                  source={{ uri: rep.avatarURL || 'https://via.placeholder.com/150' }}
+                  style={styles.avatar}
+                />
+                <View style={[
+                  styles.statusIndicator,
+                  { backgroundColor: getStatusColor(rep.currentStatus) }
+                ]} />
+              </View>
+              <Text style={styles.repName} numberOfLines={1}>
+                {rep.name || 'Unnamed Rep'}
+              </Text>
+              <View style={[
+                styles.statusBadge,
+                { backgroundColor: getStatusColor(rep.currentStatus) + '20' }
+              ]}>
+                <Text style={[
+                  styles.statusText,
+                  { color: getStatusColor(rep.currentStatus) }
+                ]}>
+                  {getStatusText(rep.currentStatus)}
                 </Text>
               </View>
-              <Ionicons
-                name="radio-button-on"
-                size={18}
-                color={getStatusColor(rep.currentStatus)}
-                style={{ marginLeft: 6 }}
-              />
-            </View>
+            </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
@@ -136,57 +191,170 @@ export default function RepTrackingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  mapContainer: { flex: 1 },
-  map: { width: '100%', height: '100%' },
-  zoomControls: {
+  container: {
+    flex: 1,
+    backgroundColor: '#E9FFFA',
+  },
+  mapBox: {
+    height: width * 0.8,
+    margin: 16,
+    borderRadius: 16,
+    overflow: 'hidden',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    backgroundColor: 'white',
+    top: -4,
+  },
+  map: {
+    width: '100%',
+    height: '100%',
+  },
+  markerContainer: {
+    position: 'relative',
+  },
+  statusPulse: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    borderRadius: 16,
+    opacity: 0.3,
+  },
+  activeBadge: {
     position: 'absolute',
     top: 10,
-    right: 10,
-    flexDirection: 'column',
-    backgroundColor: 'rgba(255,255,255,0.8)',
-    borderRadius: 8,
-    padding: 4,
-  },
-  zoomBtn: {
-    padding: 6,
-    alignItems: 'center',
-  },
-  zoomText: { fontSize: 18, fontWeight: 'bold' },
-  timelineContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderTopColor: '#eee',
-    borderTopWidth: 1,
-    height: '45%',
-  },
-  timelineTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    color: '#007bff',
-  },
-  repItem: {
+    left: 10,
+    backgroundColor: 'rgba(0, 123, 255, 0.9)',
+    borderRadius: 20,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    elevation: 3,
+    minWidth: 60,
+    justifyContent: 'center',
+  },
+  activeBadgeText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginRight: 4,
+    fontFamily: 'Poppins-Bold',
+  },
+  activeBadgeLabel: {
+    color: 'white',
+    fontSize: 14,
+    fontFamily: 'Poppins-Regular',
+  },
+  zoomControls: {
+    position: 'absolute',
+    top: 16,
+    right: 16,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    overflow: 'hidden',
+    elevation: 3,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  zoomBtn: {
+    padding: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  repsContainer: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: 16,
+    marginTop: 8,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 12,
+    borderTopWidth: 1,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderColor: '#E0E0E0',
+    bottom: 18,
+    marginBottom: -35,
+  },
+  repsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingHorizontal: 8,
+  },
+  repsTitle: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 18,
+    color: '#172B4D',
+    marginLeft: 8,
+    letterSpacing: 0.5,
+  },
+  repsScrollContent: {
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
+  repCard: {
+    width: 90,
+    alignItems: 'center',
+    marginRight: 16,
+    padding: 10,
+    backgroundColor: '#F8F9FA',
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 8,
   },
   avatar: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    marginRight: 12,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
-  repInfo: {
-    flex: 1,
+  statusIndicator: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: 'white',
   },
   repName: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#172B4D',
+    textAlign: 'center',
+    marginBottom: 6,
   },
-  repTime: {
+  statusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 4,
+    alignSelf: 'center',
+  },
+  statusText: {
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 12,
-    color: '#666',
+    textAlign: 'center',
   },
 });
