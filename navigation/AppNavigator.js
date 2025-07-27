@@ -169,7 +169,7 @@ export default function AppNavigator() {
       })} />
       <Stack.Screen name="Map" component={MapScreen} options={{ title: 'POI Map' }} />
       <Stack.Screen name="POIDetails" component={POIDetailsScreen} options={{ title: 'POI Map' }} />
-      <Stack.Screen name="EditVisit" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
+      <Stack.Screen name="EditVisitScreen" component={EditVisitScreen} options={{ title: 'Review Visit' }} />
       <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ 
         title: 'Rep Tracking',
       }} />
