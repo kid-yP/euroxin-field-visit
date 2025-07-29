@@ -178,10 +178,7 @@ export default function KnowledgeCenterScreen({ navigation }) {
     }
 
     try {
-      // Check if URL has protocol, add https:// if missing
       const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
-      
-      // Check if the link can be opened
       const supported = await Linking.canOpenURL(formattedUrl);
       
       if (supported) {
@@ -250,6 +247,7 @@ export default function KnowledgeCenterScreen({ navigation }) {
     <TouchableOpacity
       style={styles.dropdownItem}
       onPress={() => onSelect(item.value)}
+      key={item.value} // Added key prop here
     >
       <Text style={styles.dropdownItemText}>{item.label}</Text>
     </TouchableOpacity>
@@ -360,7 +358,7 @@ export default function KnowledgeCenterScreen({ navigation }) {
       <FlatList
         data={filtered}
         renderItem={renderItem}
-        keyExtractor={item => item.id}
+        keyExtractor={item => item.id} // This ensures each item has a unique key
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -414,7 +412,7 @@ const styles = StyleSheet.create({
   searchContainer: {
     overflow: 'hidden',
     marginHorizontal: 16,
-    marginTop: 10, // Added space between header and search bar
+    marginTop: 10,
   },
   searchInnerContainer: {
     flexDirection: 'row',
