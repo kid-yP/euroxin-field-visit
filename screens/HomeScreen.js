@@ -232,7 +232,7 @@ export default function HomeScreen({ navigation }) {
         }
       >
         <ExpandableSection 
-          title={`Today's Visits (${todayVisits.length})`}
+          title="Today's Visits"
           icon="today-outline"
           iconColor="#FF6B00"
           headerBgColor="#FFF5E6"
@@ -243,7 +243,7 @@ export default function HomeScreen({ navigation }) {
         </ExpandableSection>
 
         <ExpandableSection 
-          title={`This Week's Plan (${weekVisits.length})`}
+          title="This Week's Plan"
           icon="calendar-outline"
           iconColor="#00C853"
           headerBgColor="#E6F7FF"
@@ -253,7 +253,7 @@ export default function HomeScreen({ navigation }) {
         </ExpandableSection>
 
         <ExpandableSection 
-          title={`This Month's Plan (${monthVisits.length})`}
+          title="This Month's Plan"
           icon="calendar-outline"
           iconColor="#2962FF"
           headerBgColor="#F0E6FF"
