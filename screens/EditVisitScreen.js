@@ -1,153 +1,220 @@
 // screens/EditVisitScreen.js
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TextInput,
   TouchableOpacity,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-import { doc, updateDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function EditVisitScreen({ route, navigation }) {
   const { visit } = route.params;
-
-  // Assume visit has: checkInLocation (lat,lng), timestamp (check-in), checkoutTime (Date or timestamp), notes
-  const [notes, setNotes] = useState(visit.notes || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Format check-in time nicely
-  const checkInTime = visit.timestamp?.toDate ? visit.timestamp.toDate() : new Date();
-  const checkOutTime = visit.checkoutTime?.toDate ? visit.checkoutTime.toDate() : new Date();
+  const checkInTime = visit.timestamp?.toDate ? visit.timestamp.toDate() : new Date(visit.timestamp || Date.now());
+  const durationMinutes = Math.floor((new Date() - checkInTime) / 60000);
 
-  // Calculate duration in minutes
-  const durationMinutes = Math.floor((checkOutTime - checkInTime) / 60000);
-
-  // Location display - if you have a name, show that; else lat/lng
-  const locationText =
-    visit.poiName ||
-    (visit.checkInLocation
-      ? `Lat: ${visit.checkInLocation.latitude.toFixed(5)}, Lng: ${visit.checkInLocation.longitude.toFixed(5)}`
-      : 'Unknown Location');
-
-  const handleSubmit = async () => {
-    try {
-      const visitRef = doc(db, 'visits', visit.id);
-      await updateDoc(visitRef, { notes });
-
-      Alert.alert('Success', 'Visit updated successfully.', [
-        { text: 'OK', onPress: () => navigation.goBack() },
-      ]);
-    } catch (error) {
-      Alert.alert('Error', `Failed to update visit: ${error.message}`);
-    }
+  const handleCheckout = () => {
+    navigation.navigate('Checkout', { 
+      visit: {
+        ...visit,
+        checkInTime,
+        durationMinutes
+      }
+    });
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={{ flex: 1 }}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.heading}>Visit Summary</Text>
-
-        <View style={styles.summaryBox}>
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Location:</Text>
-            <Text style={styles.value}>{locationText}</Text>
+    <View style={styles.container}>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
+      >
+        <ScrollView 
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* POI Information Card */}
+          <View style={[styles.card, { backgroundColor: '#E6F7FF' }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="location-outline" size={20} color="#2962FF" />
+              <Text style={styles.cardTitle}>POI Information</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Ionicons name="business" size={18} color="#6B778C" />
+              <Text style={styles.infoLabel}>Name:</Text>
+              <Text style={styles.infoValue}>{visit.poiName || 'Unknown POI'}</Text>
+            </View>
+            
+            {visit.poiAddress && (
+              <View style={styles.infoRow}>
+                <Ionicons name="map" size={18} color="#6B778C" />
+                <Text style={styles.infoLabel}>Address:</Text>
+                <Text style={styles.infoValue}>{visit.poiAddress}</Text>
+              </View>
+            )}
+            
+            {visit.poiContact && (
+              <View style={styles.infoRow}>
+                <Ionicons name="call" size={18} color="#6B778C" />
+                <Text style={styles.infoLabel}>Contact:</Text>
+                <Text style={styles.infoValue}>{visit.poiContact}</Text>
+              </View>
+            )}
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Check-in Time:</Text>
-            <Text style={styles.value}>{checkInTime.toLocaleString()}</Text>
+          {/* Visit Details Card */}
+          <View style={[styles.card, { backgroundColor: '#FFF5E6' }]}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="time-outline" size={20} color="#FF6B00" />
+              <Text style={styles.cardTitle}>Visit Details</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Ionicons name="log-in" size={18} color="#6B778C" />
+              <Text style={styles.infoLabel}>Check-in:</Text>
+              <Text style={styles.infoValue}>{checkInTime.toLocaleString()}</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Ionicons name="hourglass" size={18} color="#6B778C" />
+              <Text style={styles.infoLabel}>Duration:</Text>
+              <Text style={styles.infoValue}>{durationMinutes} minutes</Text>
+            </View>
+            
+            <View style={styles.infoRow}>
+              <Ionicons name="flag" size={18} color="#6B778C" />
+              <Text style={styles.infoLabel}>Status:</Text>
+              <View style={[
+                styles.statusBadge,
+                { 
+                  backgroundColor: visit.status === 'completed' ? '#E6FFEE' : '#FFF5E6',
+                  borderColor: visit.status === 'completed' ? '#00C853' : '#FF6B00'
+                }
+              ]}>
+                <Text style={[
+                  styles.statusText,
+                  { color: visit.status === 'completed' ? '#00C853' : '#FF6B00' }
+                ]}>
+                  {visit.status || 'In Progress'}
+                </Text>
+              </View>
+            </View>
           </View>
 
-          <View style={styles.summaryRow}>
-            <Text style={styles.label}>Total Duration:</Text>
-            <Text style={styles.value}>{durationMinutes} minutes</Text>
-          </View>
-        </View>
-
-        <Text style={styles.notesLabel}>Notes (optional):</Text>
-        <TextInput
-          style={styles.textInput}
-          multiline
-          placeholder="Add any notes here..."
-          value={notes}
-          onChangeText={setNotes}
-          textAlignVertical="top"
-        />
-
-        <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-          <Text style={styles.submitButtonText}>Confirm & Submit Visit</Text>
-        </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {/* Checkout Button */}
+          <TouchableOpacity 
+            style={styles.checkoutButton} 
+            onPress={handleCheckout}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <View style={styles.buttonContent}>
+                <Ionicons name="exit-outline" size={24} color="#fff" />
+                <Text style={styles.checkoutButtonText}>Check Out</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
-    padding: 20,
-    paddingBottom: 40,
-    backgroundColor: '#fff',
-  },
-  heading: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    color: '#007bff',
-  },
-  summaryBox: {
-    backgroundColor: '#f9f9f9',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 30,
-    borderWidth: 1,
-    borderColor: '#ddd',
-  },
-  summaryRow: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  label: {
-    fontWeight: 'bold',
-    width: 120,
-    color: '#333',
-  },
-  value: {
     flex: 1,
-    color: '#555',
+    backgroundColor: '#E9FFFA',
   },
-  notesLabel: {
-    fontWeight: 'bold',
-    marginBottom: 8,
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 40,
+  },
+  card: {
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(0,0,0,0.05)',
+    paddingBottom: 8,
+  },
+  cardTitle: {
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
-    color: '#007bff',
+    color: '#172B4D',
+    marginLeft: 8,
   },
-  textInput: {
-    height: 120,
-    borderColor: '#ccc',
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  infoLabel: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#6B778C',
+    marginLeft: 8,
+    width: 80,
+  },
+  infoValue: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 14,
+    color: '#172B4D',
+    flex: 1,
+  },
+  statusBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 30,
-    backgroundColor: '#fff',
+    marginLeft: 8,
   },
-  submitButton: {
+  statusText: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+  },
+  checkoutButton: {
     backgroundColor: '#28a745',
     paddingVertical: 16,
-    borderRadius: 10,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#28a745',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+    marginTop: 10,
+  },
+  buttonContent: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  submitButtonText: {
+  checkoutButtonText: {
     color: '#fff',
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     fontSize: 18,
+    marginLeft: 10,
   },
 });
