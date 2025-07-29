@@ -132,31 +132,6 @@ const POIScreen = ({ navigation }) => {
     initializeLocation();
   }, []);
 
-  const getLastVisit = async (poiId) => {
-    try {
-      const q = query(
-        collection(db, 'visits'),
-        where('userId', '==', auth.currentUser.uid),
-        where('poiId', '==', poiId),
-        orderBy('timestamp', 'desc'),
-        limit(1)
-      );
-      
-      const querySnapshot = await getDocs(q);
-      if (!querySnapshot.empty) {
-        const doc = querySnapshot.docs[0];
-        return {
-          id: doc.id,
-          ...doc.data()
-        };
-      }
-      return null;
-    } catch (error) {
-      console.error('Error getting last visit:', error);
-      return null;
-    }
-  };
-
   const handleLocationSelect = (location) => {
     setSelectedLocation(location);
     if (mapRef.current) {
@@ -182,6 +157,11 @@ const POIScreen = ({ navigation }) => {
   };
 
   const handleCheckIn = async (location) => {
+    if (!auth.currentUser?.uid) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+
     setProcessingId(location.id);
     try {
       const currentLocation = await Location.getCurrentPositionAsync({});
@@ -223,28 +203,17 @@ const POIScreen = ({ navigation }) => {
         { merge: true }
       );
 
-      Alert.alert(
-        'Success', 
-        'You are now checked in!',
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              navigation.navigate('EditVisitScreen', {
-                visit: {
-                  id: visitRef.id,
-                  poiId: location.id,
-                  poiName: location.name,
-                  checkInLocation: currentLocation.coords,
-                  timestamp: new Date(),
-                  notes: '',
-                  status: 'checked-in'
-                }
-              });
-            }
-          }
-        ]
-      );
+      navigation.navigate('EditVisitScreen', {
+        visit: {
+          id: visitRef.id,
+          poiId: location.id,
+          poiName: location.name,
+          checkInLocation: currentLocation.coords,
+          timestamp: new Date(),
+          notes: '',
+          status: 'checked-in'
+        }
+      });
 
     } catch (error) {
       Alert.alert('Error', error.message);
@@ -285,7 +254,7 @@ const POIScreen = ({ navigation }) => {
   };
 
   const getMarkerSize = (type) => {
-    return type === 'pharmacy' ? 40 : 32;
+    return type === 'pharmacy' ? 50 : 42;
   };
 
   const getCheckInButtonColor = (dist) => {
@@ -320,7 +289,7 @@ const POIScreen = ({ navigation }) => {
               tracksViewChanges={false}
             >
               <View style={styles.userMarker}>
-                <Ionicons name="person-circle" size={40} color="#007bff" />
+                <Ionicons name="person-circle" size={50} color="#007bff" />
               </View>
             </Marker>
           )}
@@ -339,7 +308,7 @@ const POIScreen = ({ navigation }) => {
                 selectedLocation?.id === location.id && styles.selectedMarker,
                 { 
                   backgroundColor: getLocationColor(location.type),
-                  padding: location.type === 'pharmacy' ? 18 : 14,
+                  padding: location.type === 'pharmacy' ? 22 : 18,
                 }
               ]}>
                 <MaterialIcons 
@@ -485,12 +454,13 @@ const POIScreen = ({ navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#E9FFFA',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#E9FFFA',
   },
   mapBox: {
     height: width * 0.6,
@@ -510,13 +480,13 @@ const styles = StyleSheet.create({
   },
   userMarker: {
     backgroundColor: 'white',
-    borderRadius: 25,
-    padding: 6,
+    borderRadius: 30,
+    padding: 8,
     borderWidth: 3,
     borderColor: '#007bff'
   },
   markerContainer: {
-    borderRadius: 25,
+    borderRadius: 30,
     borderWidth: 3,
     borderColor: 'white',
     justifyContent: 'center',
@@ -537,7 +507,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderRadius: 25,
+    borderRadius: 30,
     borderWidth: 2,
     borderColor: '#007AFF',
     opacity: 0.5,
@@ -576,7 +546,7 @@ const styles = StyleSheet.create({
   },
   locationsTitle: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     marginBottom: 16,
     color: '#172B4D',
   },
@@ -616,17 +586,19 @@ const styles = StyleSheet.create({
   },
   locationName: {
     fontSize: 17,
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     color: '#172B4D',
     marginBottom: 4,
   },
   locationAddress: {
     fontSize: 14,
+    fontFamily: 'Poppins-Regular',
     color: '#666',
     marginBottom: 4,
   },
   locationDescription: {
     fontSize: 13,
+    fontFamily: 'Poppins-Regular',
     color: '#888',
     fontStyle: 'italic',
   },
@@ -645,7 +617,7 @@ const styles = StyleSheet.create({
   },
   distanceText: {
     color: 'white',
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     marginLeft: 6,
     fontSize: 14,
   },
@@ -659,6 +631,7 @@ const styles = StyleSheet.create({
   },
   visitText: {
     color: '#666',
+    fontFamily: 'Poppins-Regular',
     marginLeft: 6,
     fontSize: 14,
   },
@@ -672,7 +645,7 @@ const styles = StyleSheet.create({
   },
   checkInText: {
     color: 'white',
-    fontWeight: 'bold',
+    fontFamily: 'Poppins-SemiBold',
     marginLeft: 8,
     fontSize: 16,
   },
@@ -687,6 +660,7 @@ const styles = StyleSheet.create({
   contactText: {
     marginLeft: 8,
     fontSize: 14,
+    fontFamily: 'Poppins-Regular',
     color: '#555',
   },
 });
