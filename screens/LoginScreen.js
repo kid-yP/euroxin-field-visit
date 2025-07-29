@@ -387,7 +387,7 @@ const styles = StyleSheet.create({
   welcomeBackText: {
     fontFamily: 'Poppins-Regular',
     fontWeight: '400',
-    fontSize: 14,
+    fontSize: 12,
     lineHeight: 24,
     color: '#666',
     textAlign: 'center',
