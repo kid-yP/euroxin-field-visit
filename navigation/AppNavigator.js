@@ -3,7 +3,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Text, BackHandler } from 'react-native';
 
 // Screen Imports
 import HomeScreen from '../screens/HomeScreen';
@@ -18,6 +18,7 @@ import TaskListScreen from '../screens/TaskListScreen';
 import TaskDetailsScreen from '../screens/TaskDetailsScreen';
 import KnowledgeCenterScreen from '../screens/KnowledgeCenterScreen';
 import RepTrackingScreen from '../screens/RepTrackingScreen';
+import CheckoutScreen from '../screens/CheckoutScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -28,6 +29,9 @@ const HEADER_HEIGHT = 70;
 const CustomHeader = ({ navigation, route, options }) => {
   const title = options.title || route.name;
   
+  // Don't show back button for Checkout screen
+  const showBackButton = route.name !== 'Checkout' && navigation.canGoBack();
+  
   return (
     <LinearGradient
       colors={['#38B6FF4D', '#80CC28']}
@@ -36,7 +40,7 @@ const CustomHeader = ({ navigation, route, options }) => {
       style={[styles.headerGradient, { height: HEADER_HEIGHT }]}
     >
       <View style={styles.headerContent}>
-        {navigation.canGoBack() ? (
+        {showBackButton ? (
           <TouchableOpacity 
             onPress={() => navigation.goBack()}
             style={styles.backButton}
@@ -173,6 +177,23 @@ export default function AppNavigator() {
       <Stack.Screen name="RepTracking" component={RepTrackingScreen} options={{ 
         title: 'Rep Tracking',
       }} />
+      <Stack.Screen 
+        name="Checkout" 
+        component={CheckoutScreen} 
+        options={{ 
+          title: 'Check Out',
+          headerLeft: () => null, // Remove back button
+          gestureEnabled: false, // Disable swipe back gesture
+        }}
+        listeners={({ navigation }) => ({
+          beforeRemove: (e) => {
+            // Prevent going back
+            if (e.data.action.type === 'GO_BACK') {
+              e.preventDefault();
+            }
+          },
+        })}
+      />
     </Stack.Navigator>
   );
 }
