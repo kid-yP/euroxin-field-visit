@@ -219,7 +219,10 @@ export default function TaskListScreen({ navigation }) {
           style={styles.doneButton}
           onPress={() => toggleStatus(item)}
         >
-          <Text style={styles.doneButtonText}>Mark as Done</Text>
+          <View style={styles.doneButtonContent}>
+            <Feather name="check" size={18} color="white" />
+            <Text style={styles.doneButtonText}>Mark as Done</Text>
+          </View>
         </TouchableOpacity>
       ) : (
         !showDoneButton && item.status !== 'completed' && (
@@ -433,10 +436,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 10,
   },
+  doneButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   doneButtonText: {
     color: 'white',
     fontFamily: 'Poppins-SemiBold',
     fontSize: 14,
+    marginLeft: 8,
   },
   moreButton: {
     position: 'absolute',
