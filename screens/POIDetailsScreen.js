@@ -8,128 +8,155 @@ import {
   Alert,
   ScrollView,
   Dimensions,
-  Image
+  Image,
+  RefreshControl
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { collection, doc, setDoc, addDoc, serverTimestamp, query, where, orderBy, limit, getDocs } from 'firebase/firestore';
+import { 
+  collection, 
+  doc, 
+  setDoc, 
+  addDoc, 
+  serverTimestamp, 
+  query, 
+  getDocs, 
+  GeoPoint 
+} from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 
 const { width } = Dimensions.get('window');
 
-const SAMPLE_LOCATIONS = [
-  {
-    id: 'loc1',
-    name: 'Central Pharmacy',
-    description: '24-hour pharmacy with full services',
-    address: '123 Main St, Addis Ababa',
-    type: 'pharmacy',
-    lastVisit: '2 days ago',
-    contact: 'Dr. Alemayehu (0912345678)',
-    coords: {
-      latitude: 9.005401,
-      longitude: 38.763611
-    },
-    image: 'https://via.placeholder.com/150/007bff/ffffff?text=CP'
-  },
-  {
-    id: 'loc2',
-    name: 'City Hospital',
-    description: 'General hospital with emergency services',
-    address: '456 Health Ave, Addis Ababa',
-    type: 'hospital',
-    lastVisit: '1 week ago',
-    contact: 'Dr. Selam (0911223344)',
-    coords: {
-      latitude: 9.015,
-      longitude: 38.77
-    },
-    image: 'https://via.placeholder.com/150/ff3b30/ffffff?text=CH'
-  },
-  {
-    id: 'loc3',
-    name: 'Downtown Clinic',
-    description: 'Primary care medical clinic',
-    address: '789 Care Blvd, Addis Ababa',
-    type: 'clinic',
-    lastVisit: 'Never visited',
-    contact: 'Nurse Tigist (0922334455)',
-    coords: {
-      latitude: 8.995,
-      longitude: 38.755
-    },
-    image: 'https://via.placeholder.com/150/34c759/ffffff?text=DC'
-  }
-];
-
 const POIScreen = ({ navigation }) => {
-  const [locations, setLocations] = useState(SAMPLE_LOCATIONS);
+  const [locations, setLocations] = useState([]);
   const [selectedLocation, setSelectedLocation] = useState(null);
   const [userLocation, setUserLocation] = useState(null);
   const [region, setRegion] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [processingId, setProcessingId] = useState(null);
   const mapRef = useRef(null);
 
-  useEffect(() => {
-    const initializeLocation = async () => {
-      try {
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted') {
-          Alert.alert('Permission denied', 'Location access is required');
-          setLoading(false);
-          return;
-        }
-
-        const location = await Location.getCurrentPositionAsync({});
-        const userCoords = {
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude
-        };
-        setUserLocation(userCoords);
-
-        const updatedLocations = [...SAMPLE_LOCATIONS];
-        updatedLocations[0].coords = {
-          latitude: userCoords.latitude + (Math.random() * 0.001 - 0.0005),
-          longitude: userCoords.longitude + (Math.random() * 0.001 - 0.0005)
-        };
-
-        setLocations(updatedLocations);
-        setSelectedLocation(updatedLocations[0]);
-
-        const allCoords = updatedLocations.map(loc => loc.coords);
-        allCoords.push(userCoords);
-
-        const lats = allCoords.map(c => c.latitude);
-        const lngs = allCoords.map(c => c.longitude);
-        const minLat = Math.min(...lats);
-        const maxLat = Math.max(...lats);
-        const minLng = Math.min(...lngs);
-        const maxLng = Math.max(...lngs);
-
-        setRegion({
-          latitude: (minLat + maxLat) / 2,
-          longitude: (minLng + maxLng) / 2,
-          latitudeDelta: (maxLat - minLat) * 1.5,
-          longitudeDelta: (maxLng - minLng) * 1.5,
-        });
-      } catch (error) {
-        console.error('Location error:', error);
-        setRegion({
-          latitude: 9.005401,
-          longitude: 38.763611,
-          latitudeDelta: 0.05,
-          longitudeDelta: 0.05,
-        });
-        setLocations(SAMPLE_LOCATIONS);
-        setSelectedLocation(SAMPLE_LOCATIONS[0]);
-      } finally {
-        setLoading(false);
-      }
+  const validateCoordinates = (coords) => {
+    if (!coords) return { latitude: 0, longitude: 0 };
+    return {
+      latitude: typeof coords.latitude === 'number' ? coords.latitude : 0,
+      longitude: typeof coords.longitude === 'number' ? coords.longitude : 0
     };
+  };
 
-    initializeLocation();
+  const fetchPOIs = async () => {
+    try {
+      setLoading(true);
+      const q = query(collection(db, 'pois'));
+      const querySnapshot = await getDocs(q);
+      
+      const pois = [];
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        
+        const contact = typeof data.contact === 'object' 
+          ? `${data.contact.name || ''} ${data.contact.phone || ''}`.trim()
+          : data.contact || '';
+        
+        pois.push({
+          id: doc.id,
+          name: data.name || 'Unnamed POI',
+          description: data.description || '',
+          address: data.address || '',
+          type: data.category === 'facility' ? 'hospital' : 'pharmacy',
+          contact: contact,
+          coords: validateCoordinates(data.location),
+          image: data.image || null,
+        });
+      });
+
+      setLocations(pois);
+      if (pois.length > 0) setSelectedLocation(pois[0]);
+      return pois;
+    } catch (error) {
+      console.error('Error fetching POIs:', error);
+      Alert.alert('Error', 'Failed to load locations');
+      return [];
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission denied', 'Location access is required');
+        return null;
+      }
+      const location = await Location.getCurrentPositionAsync({});
+      return {
+        latitude: location.coords.latitude,
+        longitude: location.coords.longitude
+      };
+    } catch (error) {
+      console.error('Location error:', error);
+      return null;
+    }
+  };
+
+  const calculateRegion = (userCoords, pois) => {
+    const allCoords = pois.map(poi => poi.coords);
+    if (userCoords) allCoords.push(userCoords);
+
+    if (allCoords.length === 0) {
+      return {
+        latitude: 9.005401,
+        longitude: 38.763611,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      };
+    }
+
+    const lats = allCoords.map(c => c.latitude);
+    const lngs = allCoords.map(c => c.longitude);
+    const minLat = Math.min(...lats);
+    const maxLat = Math.max(...lats);
+    const minLng = Math.min(...lngs);
+    const maxLng = Math.max(...lngs);
+
+    return {
+      latitude: (minLat + maxLat) / 2,
+      longitude: (minLng + maxLng) / 2,
+      latitudeDelta: (maxLat - minLat) * 1.5,
+      longitudeDelta: (maxLng - minLng) * 1.5,
+    };
+  };
+
+  const initializeMap = async () => {
+    try {
+      const [userCoords, pois] = await Promise.all([
+        fetchUserLocation(),
+        fetchPOIs()
+      ]);
+      setUserLocation(userCoords);
+      setRegion(calculateRegion(userCoords, pois));
+    } catch (error) {
+      console.error('Initialization error:', error);
+      setRegion({
+        latitude: 9.005401,
+        longitude: 38.763611,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await initializeMap();
+    setRefreshing(false);
+  };
+
+  useEffect(() => {
+    initializeMap();
   }, []);
 
   const handleLocationSelect = (location) => {
@@ -146,14 +173,6 @@ const POIScreen = ({ navigation }) => {
 
   const handleMarkerPress = (location) => {
     setSelectedLocation(location);
-    if (mapRef.current) {
-      mapRef.current.animateToRegion({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      }, 500);
-    }
   };
 
   const handleCheckIn = async (location) => {
@@ -177,15 +196,23 @@ const POIScreen = ({ navigation }) => {
         return;
       }
 
+      const geoPoint = new GeoPoint(
+        currentLocation.coords.latitude,
+        currentLocation.coords.longitude
+      );
+
       const visitRef = await addDoc(collection(db, 'visits'), {
         userId: auth.currentUser.uid,
         poiId: location.id,
         poiName: location.name,
+        poiAddress: location.address,
+        poiContact: location.contact,
         poiType: location.type,
         status: 'checked-in',
-        checkInLocation: currentLocation.coords,
+        checkInTime: serverTimestamp(),
         timestamp: serverTimestamp(),
         notes: '',
+        checkInLocation: geoPoint
       });
 
       await setDoc(
@@ -195,27 +222,32 @@ const POIScreen = ({ navigation }) => {
           name: auth.currentUser.displayName || 'Rep',
           currentStatus: ['checked-in'],
           lastCheckIn: {
-            location: currentLocation.coords,
+            location: geoPoint,
             timestamp: serverTimestamp(),
           },
           lastUpdated: serverTimestamp(),
+          currentVisitId: visitRef.id,
+          currentPoiId: location.id
         },
         { merge: true }
       );
 
-      navigation.navigate('EditVisitScreen', {
+      navigation.navigate('VisitDetails', {
         visit: {
           id: visitRef.id,
+          userId: auth.currentUser.uid,
           poiId: location.id,
           poiName: location.name,
-          checkInLocation: currentLocation.coords,
-          timestamp: new Date(),
+          checkInTime: serverTimestamp(),
+          timestamp: serverTimestamp(),
           notes: '',
-          status: 'checked-in'
+          status: 'checked-in',
+          checkInLocation: geoPoint
         }
       });
 
     } catch (error) {
+      console.error('Check-in error:', error);
       Alert.alert('Error', error.message);
     } finally {
       setProcessingId(null);
@@ -254,7 +286,7 @@ const POIScreen = ({ navigation }) => {
   };
 
   const getMarkerSize = (type) => {
-    return type === 'pharmacy' ? 50 : 42;
+    return type === 'pharmacy' ? 28 : 24;
   };
 
   const getCheckInButtonColor = (dist) => {
@@ -262,7 +294,7 @@ const POIScreen = ({ navigation }) => {
     return dist <= 200 ? '#34C759' : '#FF3B30';
   };
 
-  if (loading) {
+  if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007bff" />
@@ -308,14 +340,15 @@ const POIScreen = ({ navigation }) => {
                 selectedLocation?.id === location.id && styles.selectedMarker,
                 { 
                   backgroundColor: getLocationColor(location.type),
-                  padding: location.type === 'pharmacy' ? 22 : 18,
                 }
               ]}>
-                <MaterialIcons 
-                  name={getLocationIcon(location.type)} 
-                  size={getMarkerSize(location.type)} 
-                  color="white" 
-                />
+                <View style={styles.markerIconBackground}>
+                  <MaterialIcons 
+                    name={getLocationIcon(location.type)} 
+                    size={getMarkerSize(location.type)} 
+                    color="white" 
+                  />
+                </View>
                 {location.type === 'pharmacy' && (
                   <View style={styles.pharmacyPulse} />
                 )}
@@ -358,93 +391,111 @@ const POIScreen = ({ navigation }) => {
         <ScrollView 
           contentContainerStyle={styles.locationsScroll}
           showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#007bff']}
+              tintColor="#007bff"
+            />
+          }
         >
-          {locations.map((location) => (
-            <TouchableOpacity 
-              key={location.id} 
-              style={[
-                styles.locationCard,
-                selectedLocation?.id === location.id && styles.selectedLocationCard
-              ]}
-              onPress={() => handleLocationSelect(location)}
-              activeOpacity={0.8}
-            >
-              <View style={styles.locationHeader}>
-                <View style={[
-                  styles.locationIconContainer,
-                  { backgroundColor: getLocationColor(location.type) }
-                ]}>
-                  <MaterialIcons 
-                    name={getLocationIcon(location.type)} 
-                    size={28} 
-                    color="white" 
+          {locations.length === 0 && !loading ? (
+            <View style={styles.noLocationsContainer}>
+              <Ionicons name="location-off" size={50} color="#CCCCCC" />
+              <Text style={styles.noLocationsText}>No locations found</Text>
+            </View>
+          ) : (
+            locations.map((location) => (
+              <TouchableOpacity 
+                key={location.id} 
+                style={[
+                  styles.locationCard,
+                  selectedLocation?.id === location.id && styles.selectedLocationCard
+                ]}
+                onPress={() => handleLocationSelect(location)}
+                activeOpacity={0.8}
+              >
+                {location.image && (
+                  <Image 
+                    source={{ uri: location.image }} 
+                    style={styles.locationImage}
+                    resizeMode="cover"
                   />
-                </View>
-                <View style={styles.locationDetails}>
-                  <Text style={styles.locationName}>{location.name}</Text>
-                  <Text style={styles.locationAddress}>{location.address}</Text>
-                  <Text style={styles.locationDescription}>{location.description}</Text>
-                </View>
-              </View>
-              
-              <View style={styles.locationFooter}>
-                <View style={styles.distanceBadge}>
-                  <MaterialIcons name="directions-walk" size={16} color="white" />
-                  <Text style={styles.distanceText}>
-                    {userLocation 
-                      ? `${calculateDistance(
-                          userLocation.latitude,
-                          userLocation.longitude,
-                          location.coords.latitude,
-                          location.coords.longitude
-                        )}m`
-                      : '--'}
-                  </Text>
+                )}
+                
+                <View style={styles.locationHeader}>
+                  <View style={[
+                    styles.locationIconContainer,
+                    { backgroundColor: getLocationColor(location.type) }
+                  ]}>
+                    <MaterialIcons 
+                      name={getLocationIcon(location.type)} 
+                      size={28} 
+                      color="white" 
+                    />
+                  </View>
+                  <View style={styles.locationDetails}>
+                    <Text style={styles.locationName}>{location.name}</Text>
+                    <Text style={styles.locationAddress}>{location.address}</Text>
+                    <Text style={styles.locationDescription}>{location.description}</Text>
+                  </View>
                 </View>
                 
-                <View style={styles.visitBadge}>
-                  <MaterialIcons name="history" size={16} color="#666" />
-                  <Text style={styles.visitText}>{location.lastVisit}</Text>
-                </View>
-              </View>
-
-              {location.contact && (
-                <View style={styles.contactContainer}>
-                  <MaterialIcons name="person" size={16} color="#666" />
-                  <Text style={styles.contactText}>{location.contact}</Text>
-                </View>
-              )}
-              
-              <TouchableOpacity
-                style={[
-                  styles.checkInButton,
-                  { 
-                    backgroundColor: getCheckInButtonColor(
-                      userLocation 
-                        ? calculateDistance(
+                <View style={styles.locationFooter}>
+                  <View style={styles.distanceBadge}>
+                    <MaterialIcons name="directions-walk" size={16} color="white" />
+                    <Text style={styles.distanceText}>
+                      {userLocation 
+                        ? `${calculateDistance(
                             userLocation.latitude,
                             userLocation.longitude,
                             location.coords.latitude,
                             location.coords.longitude
-                          )
-                        : null
-                    )
-                  }
-                ]}
-                onPress={() => handleCheckIn(location)}
-                disabled={processingId !== null}
-              >
-                {processingId === location.id ? (
-                  <ActivityIndicator color="white" />
-                ) : (
-                  <>
-                    <MaterialIcons name="login" size={20} color="white" />
-                    <Text style={styles.checkInText}>Check In</Text>
-                  </>
+                          )}m`
+                        : '--'}
+                    </Text>
+                  </View>
+                </View>
+                
+                {location.contact && (
+                  <View style={styles.contactContainer}>
+                    <MaterialIcons name="person" size={16} color="#666" />
+                    <Text style={styles.contactText}>{location.contact}</Text>
+                  </View>
                 )}
+                
+                <TouchableOpacity
+                  style={[
+                    styles.checkInButton,
+                    { 
+                      backgroundColor: getCheckInButtonColor(
+                        userLocation 
+                          ? calculateDistance(
+                              userLocation.latitude,
+                              userLocation.longitude,
+                              location.coords.latitude,
+                              location.coords.longitude
+                            )
+                          : null
+                      )
+                    }
+                  ]}
+                  onPress={() => handleCheckIn(location)}
+                  disabled={processingId !== null}
+                >
+                  {processingId === location.id ? (
+                    <ActivityIndicator color="white" />
+                  ) : (
+                    <>
+                      <MaterialIcons name="login" size={20} color="white" />
+                      <Text style={styles.checkInText}>Check In</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
               </TouchableOpacity>
-            </TouchableOpacity>
-          ))}
+            ))
+          )}
         </ScrollView>
       </View>
     </View>
@@ -461,6 +512,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#E9FFFA',
+  },
+  noLocationsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  noLocationsText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: '#666',
+    fontFamily: 'Poppins-Regular',
   },
   mapBox: {
     height: width * 0.6,
@@ -492,25 +555,36 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.5,
+    shadowRadius: 5,
+    elevation: 6,
+    padding: 10,
+  },
+  markerIconBackground: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    borderRadius: 20,
+    padding: 8,
   },
   selectedMarker: {
     borderColor: 'white',
     transform: [{ scale: 1.3 }],
+    shadowColor: '#007AFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 10,
+    elevation: 10,
   },
   pharmacyPulse: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    top: -5,
+    left: -5,
+    right: -5,
+    bottom: -5,
     borderRadius: 30,
     borderWidth: 2,
     borderColor: '#007AFF',
-    opacity: 0.5,
+    opacity: 0.6,
     zIndex: -1,
   },
   zoomControls: {
@@ -566,6 +640,12 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     elevation: 2,
   },
+  locationImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
   selectedLocationCard: {
     borderColor: '#007bff',
     borderWidth: 1.5,
@@ -604,8 +684,9 @@ const styles = StyleSheet.create({
   },
   locationFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginVertical: 12,
+    justifyContent: 'flex-start',
+    marginTop: 12,
+    marginBottom: 4,
   },
   distanceBadge: {
     flexDirection: 'row',
@@ -618,20 +699,6 @@ const styles = StyleSheet.create({
   distanceText: {
     color: 'white',
     fontFamily: 'Poppins-SemiBold',
-    marginLeft: 6,
-    fontSize: 14,
-  },
-  visitBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f0f0f0',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-  },
-  visitText: {
-    color: '#666',
-    fontFamily: 'Poppins-Regular',
     marginLeft: 6,
     fontSize: 14,
   },
