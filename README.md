@@ -2,48 +2,60 @@
 A mobile-first platform designed to streamline the planning, tracking, and reporting of field visits—perfect for marketers, supervisors, and admins in fast-moving field environments.
 
 🚀 Overview
-Euroxin Field Visit empowers field teams with real-time GPS check-ins, interactive maps, visit logging, task management, and knowledge resources—bundled in a clean React Native interface backed by Firebase.
+Euroxin Field Visit empowers field teams with:
+
+✅ Real-time GPS check-ins
+
+📍 Interactive mapping
+
+📝 Visit logging
+
+📊 Task management
+
+📚 Knowledge resources
+
+All built with React Native and powered by Firebase.
 
 📱 Key Features
-Visit Planning & Tracking
+🗺 Visit Planning & Tracking
+GPS check-in/out via POIs
 
-Check-in/out via GPS & POIs
+Review past visits & outcomes
 
-View past visits & visit outcomes
+📌 Smart Attendance
+Auto check-out beyond 1km radius
 
-Smart Attendance
+Geofenced actions
 
-Auto check-out if >1km from visit zone
+📄 Visit Summary & Logs
+Contact details
 
-Geofence-triggered actions
+Product interest
 
-Visit Summary & Logs
+Comments & visit photos
 
-Contact info, product interest, comments, images
+✅ Task Management
+Assign weekly/monthly tasks
 
-Task Management
+Track progress in real time
 
-Weekly/monthly task assignment
+🗂 Live Field Rep Map
+Supervisor module
 
-Real-time progress tracking
+Scrollable map + activity feed
 
-Live Field Rep Map
+🛒 Stock Monitoring
+Distributor/product listings
 
-Supervisor-only module
+Contact database
 
-Scrollable rep view + activity feed
+📖 Knowledge Center
+Filterable training hub: Sales, Product, Compliance
 
-Stock Monitoring
+👤 User Profiles
+Role-based access
 
-Distributor/product listings & contacts
-
-Knowledge Center
-
-Filterable training hub (Sales/Product/Compliance)
-
-User Profiles
-
-Role-based access & customizable settings
+Custom settings per user
 
 🛠 Tech Stack
 Layer	Tools Used
@@ -55,37 +67,40 @@ Hosting	Vercel, Firebase Hosting
 👥 Target Users
 Field Marketers (Mobile-only)
 
-Supervisors (Mobile + Admin access)
+Supervisors (Mobile + Web Admin)
 
-Admins (Full access via web portal)
+Admins (Full access via Web Portal)
 
 🌐 Admin Web Modules
-Dashboard: KPIs, charts, completion rates
-
-User Management: Region/role assignment
-
-Task Scheduler: Recurring/one-off plans
-
-Live Tracking: Timeline/map view of reps
-
-Stock Management: Distributor oversight
-
-Knowledge Uploads: PDF/video updates
-
-Settings: Visit radius, branding, languages
-
+Module	Description
+Dashboard	KPIs, charts, visit completion stats
+User Management	Assign region, roles, and permissions
+Task Scheduler	Plan recurring or one-off field tasks
+Live Tracking	Timeline view, GPS of field reps
+Stock Management	Distributor records and inventory oversight
+Knowledge Uploads	Add training PDFs and videos
+App Settings	Configure radius, branding, and languages
 🔐 Security
-Role-based access control (RBAC)
+🔒 Role-Based Access Control (RBAC)
 
-Audit logs and user session protection
+🧾 Audit logs
+
+🛡 Secure user session handling
 
 📦 Installation
 bash
-# Clone the repo
+# Clone the repository
 git clone https://github.com/kid-yP/euroxin-field-visit.git
+
+# Navigate to the project
+cd euroxin-field-visit
 
 # Install dependencies
 npm install
 
-# Run the app
+# Start the development server
 npm start
+🔗 Resources
+📥 Download Latest APK (replace with actual link)
+
+🧑‍💻 GitHub Repo
