@@ -15,7 +15,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as ImagePicker from 'expo-image-picker';
 import { auth, db, storage } from '../firebase/config';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -24,58 +24,89 @@ const { width } = Dimensions.get('window');
 
 export default function ProfileScreen({ navigation }) {
   const user = auth.currentUser;
-  const [userData, setUserData] = useState(null);
+  const [userData, setUserData] = useState({
+    name: '',
+    role: '',
+    avatarUrl: '',
+    email: '',
+  });
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [language, setLanguage] = useState('en');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  const fetchUserData = async () => {
+  const fetchUserData = useCallback(async () => {
     if (!user) {
       setLoading(false);
       return;
     }
+    
     try {
-      const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        setUserData(data);
+      setLoading(true);
+      const userRef = doc(db, 'users', user.uid);
+      const userSnap = await getDoc(userRef);
+      
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        
+        // Extract data with multiple fallback options
+        const userData = {
+          name: data.name || user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
+          role: data.role || 'Member',
+          avatarUrl: data.avatarUrl || user.photoURL || 'https://placehold.co/100x100?text=Avatar',
+          email: data.email || user.email || '',
+        };
+        
+        setUserData(userData);
         setNotificationsEnabled(data.notificationsEnabled || false);
         setLanguage(data.language || 'en');
+        
       } else {
-        setUserData({
-          name: 'No name set',
-          role: 'No role set',
-          photoURL: null,
-        });
+        // Create new document with comprehensive defaults
+        const initialUserData = {
+          name: user.displayName || (user.email ? user.email.split('@')[0] : 'User'),
+          email: user.email || '',
+          role: 'Member',
+          avatarUrl: user.photoURL || 'https://placehold.co/100x100?text=Avatar',
+          notificationsEnabled: false,
+          language: 'en',
+          createdAt: new Date(),
+        };
+        
+        await setDoc(userRef, initialUserData);
+        setUserData(initialUserData);
       }
     } catch (error) {
-      Alert.alert('Error', 'Failed to load profile data.');
+      console.error('Error fetching user data:', error);
+      Alert.alert('Error', 'Failed to load profile data. Please try again later.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     fetchUserData();
-  }, []);
+  }, [fetchUserData]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchUserData();
-  }, []);
+  }, [fetchUserData]);
 
   useEffect(() => {
     const saveLanguage = async () => {
-      if (user) {
-        const docRef = doc(db, 'users', user.uid);
-        await updateDoc(docRef, { language });
+      if (user && language) {
+        try {
+          const docRef = doc(db, 'users', user.uid);
+          await updateDoc(docRef, { language });
+        } catch (error) {
+          console.error('Error saving language:', error);
+        }
       }
     };
     saveLanguage();
-  }, [language]);
+  }, [language, user]);
 
   const toggleNotifications = async () => {
     try {
@@ -86,54 +117,81 @@ export default function ProfileScreen({ navigation }) {
         await updateDoc(docRef, { notificationsEnabled: newValue });
       }
     } catch (error) {
+      console.error('Error updating notifications:', error);
       Alert.alert('Error', 'Failed to update notification settings.');
+      setNotificationsEnabled(!notificationsEnabled);
     }
   };
 
   const handleLogout = async () => {
     try {
       await auth.signOut();
-      navigation.replace('Login');
+      navigation.replace('LoginScreen');
     } catch (error) {
+      console.error('Error logging out:', error);
       Alert.alert('Error', 'Failed to log out.');
     }
   };
 
   const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission required', 'Permission to access media library is required!');
-      return;
-    }
+    try {
+      const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permissionResult.granted) {
+        Alert.alert('Permission required', 'Permission to access media library is required!');
+        return;
+      }
 
-    const pickerResult = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.7,
-      allowsEditing: true,
-      aspect: [1, 1],
-    });
+      const pickerResult = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.7,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
 
-    if (!pickerResult.canceled) {
-      uploadImage(pickerResult.assets[0].uri);
+      if (!pickerResult.canceled && pickerResult.assets && pickerResult.assets.length > 0) {
+        await uploadImage(pickerResult.assets[0].uri);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to select image.');
     }
   };
 
   const uploadImage = async (uri) => {
+    if (!user || !user.uid) {
+      Alert.alert('Error', 'User not authenticated');
+      return;
+    }
+    
     try {
       setLoading(true);
       const response = await fetch(uri);
       const blob = await response.blob();
 
-      const storageRef = ref(storage, `profile_pictures/${user.uid}.jpg`);
+      const storageRef = ref(storage, `profile_pictures/${user.uid}`);
       await uploadBytes(storageRef, blob);
 
       const downloadURL = await getDownloadURL(storageRef);
-      setUserData((prev) => ({ ...prev, photoURL: downloadURL }));
+      
+      setUserData(prev => ({ 
+        ...prev, 
+        avatarUrl: downloadURL 
+      }));
 
       const docRef = doc(db, 'users', user.uid);
-      await updateDoc(docRef, { photoURL: downloadURL });
+      await updateDoc(docRef, { 
+        avatarUrl: downloadURL,
+        updatedAt: new Date() 
+      });
+
+      await auth.currentUser.updateProfile({
+        photoURL: downloadURL
+      });
+      
+      Alert.alert('Success', 'Profile picture updated successfully!');
     } catch (error) {
-      Alert.alert('Error', 'Failed to upload image.');
+      console.error('Error uploading image:', error);
+      Alert.alert('Error', 'Failed to upload image. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -152,13 +210,18 @@ export default function ProfileScreen({ navigation }) {
     return (
       <View style={[styles.container, styles.center]}>
         <Text>No user is currently logged in.</Text>
+        <TouchableOpacity 
+          style={styles.loginButton} 
+          onPress={() => navigation.replace('LoginScreen')}
+        >
+          <Text style={styles.loginButtonText}>Go to Login</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
     <View style={styles.mainContainer}>
-      {/* Header with gradient */}
       <LinearGradient
         colors={['#38B6FF4D', '#80CC28']}
         start={{ x: 0, y: 0 }}
@@ -175,14 +238,13 @@ export default function ProfileScreen({ navigation }) {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
       >
-        {/* Profile Info Card */}
         <View style={styles.profileCard}>
           <View style={styles.profileRow}>
             <TouchableOpacity onPress={pickImage} activeOpacity={0.7}>
               <View style={styles.avatarWrapper}>
                 <Image
                   source={{
-                    uri: userData?.photoURL || 'https://placehold.co/100x100?text=Avatar',
+                    uri: userData.avatarUrl,
                   }}
                   style={styles.avatar}
                 />
@@ -193,14 +255,13 @@ export default function ProfileScreen({ navigation }) {
             </TouchableOpacity>
             
             <View style={styles.profileInfo}>
-              <Text style={styles.name}>{userData?.name || 'Name not set'}</Text>
-              <Text style={styles.email}>{user.email}</Text>
-              <Text style={styles.role}>{userData?.role || 'Role not set'}</Text>
+              <Text style={styles.name}>{userData.name}</Text>
+              <Text style={styles.role}>{userData.role}</Text>
+              <Text style={styles.email}>{userData.email}</Text>
             </View>
           </View>
         </View>
 
-        {/* Settings Card */}
         <View style={styles.settingsCard}>
           <Text style={styles.sectionTitle}>Settings</Text>
           
@@ -243,7 +304,6 @@ export default function ProfileScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Version Info inside Settings Card */}
           <View style={styles.settingItem}>
             <View style={styles.settingText}>
               <Feather name="info" size={20} color="#6B778C" />
@@ -253,7 +313,6 @@ export default function ProfileScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Logout Button - Fixed position */}
         <View style={styles.logoutButtonContainer}>
           <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
             <Ionicons name="log-out-outline" size={24} color="white" />
@@ -269,6 +328,41 @@ const styles = StyleSheet.create({
   mainContainer: {
     flex: 1,
     backgroundColor: '#E9FFFA',
+  },
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: '#F5F9FF',
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noUserContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#F5F9FF',
+  },
+  noUserText: {
+    fontSize: 18,
+    color: '#6B778C',
+    fontFamily: 'Poppins-Regular',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  loginButton: {
+    backgroundColor: '#38B6FF',
+    paddingVertical: 12,
+    paddingHorizontal: 30,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  loginButtonText: {
+    color: 'white',
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 16,
   },
   header: {
     height: 70,
@@ -293,12 +387,7 @@ const styles = StyleSheet.create({
   scrollContainer: {
     padding: 16,
     paddingTop: 20,
-    paddingBottom: 120, // Extra padding to ensure logout button is visible
-  },
-  center: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    flex: 1,
+    paddingBottom: 120,
   },
   profileCard: {
     backgroundColor: 'white',
@@ -339,16 +428,17 @@ const styles = StyleSheet.create({
     color: '#172B4D',
     marginBottom: 4,
   },
+  role: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 14,
+    color: '#007bff',
+    marginBottom: 4,
+  },
   email: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
     color: '#6B778C',
     marginBottom: 4,
-  },
-  role: {
-    fontFamily: 'Poppins-Medium',
-    fontSize: 14,
-    color: '#007bff',
   },
   settingsCard: {
     backgroundColor: 'white',
