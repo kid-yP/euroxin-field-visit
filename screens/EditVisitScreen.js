@@ -1,5 +1,6 @@
-// screens/EditVisitScreen.js
-import React, { useState } from 'react';
+
+//This page is not used anymore!
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,26 +10,211 @@ import {
   Platform,
   ScrollView,
   ActivityIndicator,
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { doc, updateDoc, serverTimestamp, getDoc } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 export default function EditVisitScreen({ route, navigation }) {
-  const { visit } = route.params;
+  // Validate and safely extract visit data with defaults
+  const { visit = {} } = route.params || {};
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkInTime, setCheckInTime] = useState(null);
+  const [durationSeconds, setDurationSeconds] = useState(visit.durationSeconds || 0);
+  const [timerInterval, setTimerInterval] = useState(null);
+  const [visitDataValid, setVisitDataValid] = useState(false);
 
-  // Format check-in time nicely
-  const checkInTime = visit.timestamp?.toDate ? visit.timestamp.toDate() : new Date(visit.timestamp || Date.now());
-  const durationMinutes = Math.floor((new Date() - checkInTime) / 60000);
-
-  const handleCheckout = () => {
-    navigation.navigate('Checkout', { 
-      visit: {
-        ...visit,
-        checkInTime,
-        durationMinutes
+  // Validate visit data on component mount
+  useEffect(() => {
+    const validateVisitData = () => {
+      if (!visit || !visit.id || !visit.userId) {
+        console.error('Invalid visit data:', visit);
+        Alert.alert(
+          'Error', 
+          'Invalid visit data. Please go back and try again.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        );
+        return false;
       }
+      return true;
+    };
+
+    setVisitDataValid(validateVisitData());
+  }, [visit]);
+
+  // Start timer immediately when component mounts
+  useEffect(() => {
+    if (!visitDataValid) return;
+
+    const startTimer = () => {
+      // Clear any existing interval
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+      
+      // Start new interval
+      const interval = setInterval(() => {
+        setDurationSeconds(prev => {
+          const newDuration = prev + 1;
+          // Update Firestore every 60 seconds to save progress
+          if (newDuration % 60 === 0) {
+            updateDurationInFirestore(newDuration);
+          }
+          return newDuration;
+        });
+      }, 1000);
+      
+      setTimerInterval(interval);
+      return interval;
+    };
+
+    const updateDurationInFirestore = async (duration) => {
+      try {
+        await updateDoc(doc(db, 'visits', visit.id), {
+          durationSeconds: duration
+        });
+      } catch (error) {
+        console.error('Error updating duration:', error);
+      }
+    };
+
+    const fetchVisitData = async () => {
+      try {
+        const visitDoc = await getDoc(doc(db, 'visits', visit.id));
+        if (visitDoc.exists()) {
+          const visitData = visitDoc.data();
+          const timestamp = visitData.checkInTime || visitData.timestamp;
+          const checkInDate = timestamp?.toDate ? timestamp.toDate() : new Date();
+          
+          setCheckInTime(checkInDate);
+          setDurationSeconds(visitData.durationSeconds || 0);
+
+          if (visitData.status === 'checked-in') {
+            startTimer();
+          }
+        } else {
+          throw new Error('Visit document not found');
+        }
+      } catch (error) {
+        console.error('Error fetching visit data:', error);
+        const fallbackDate = visit.checkInTime?.toDate ? visit.checkInTime.toDate() : 
+                         visit.timestamp?.toDate ? visit.timestamp.toDate() : new Date();
+        setCheckInTime(fallbackDate);
+        setDurationSeconds(visit.durationSeconds || 0);
+
+        if (visit.status === 'checked-in') {
+          startTimer();
+        }
+      }
+    };
+
+    fetchVisitData();
+
+    return () => {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+    };
+  }, [visit.id, visitDataValid]);
+
+  const formatDuration = (seconds) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    return [
+      hours.toString().padStart(2, '0'),
+      minutes.toString().padStart(2, '0'),
+      secs.toString().padStart(2, '0')
+    ].join(':');
+  };
+
+  const formatTimeOnly = (date) => {
+    if (!date) return 'Not recorded';
+    return date.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
+
+  const handleCheckout = async () => {
+    if (!visitDataValid) {
+      Alert.alert('Error', 'Cannot checkout with invalid visit data');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (!checkInTime) {
+        throw new Error('Check-in time not available');
+      }
+
+      // Calculate final duration in minutes
+      const finalDurationMinutes = Math.floor(durationSeconds / 60);
+
+      // Update the visit status in Firestore
+      await updateDoc(doc(db, 'visits', visit.id), {
+        status: 'checked-out',
+        checkOutTime: serverTimestamp(),
+        durationMinutes: finalDurationMinutes,
+        durationSeconds: durationSeconds
+      });
+
+      // Update the rep's location status
+      await updateDoc(doc(db, 'repLocations', visit.userId), {
+        currentStatus: ['checked-out'],
+        lastUpdated: serverTimestamp()
+      });
+
+      // Clear the timer interval
+      if (timerInterval) {
+        clearInterval(timerInterval);
+      }
+
+      // Safely navigate to Checkout screen with all required data
+      navigation.navigate('Checkout', { 
+        visit: {
+          id: visit.id,
+          userId: visit.userId,
+          poiId: visit.poiId || '',
+          poiName: visit.poiName || 'Unknown POI',
+          status: 'checked-out',
+          durationMinutes: finalDurationMinutes,
+          durationSeconds: durationSeconds,
+          checkInTime: checkInTime.toISOString(),
+          checkOutTime: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Error during checkout:', error);
+      Alert.alert(
+        'Checkout Error', 
+        error.message || 'Failed to complete checkout. Please try again.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!visitDataValid) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text>Validating visit data...</Text>
+      </View>
+    );
+  }
+
+  if (!checkInTime) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text>Loading visit data...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -80,13 +266,17 @@ export default function EditVisitScreen({ route, navigation }) {
             <View style={styles.infoRow}>
               <Ionicons name="log-in" size={18} color="#6B778C" />
               <Text style={styles.infoLabel}>Check-in:</Text>
-              <Text style={styles.infoValue}>{checkInTime.toLocaleString()}</Text>
+              <Text style={styles.infoValue}>
+                {formatTimeOnly(checkInTime)}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
               <Ionicons name="hourglass" size={18} color="#6B778C" />
               <Text style={styles.infoLabel}>Duration:</Text>
-              <Text style={styles.infoValue}>{durationMinutes} minutes</Text>
+              <Text style={[styles.infoValue, { fontFamily: 'monospace' }]}>
+                {formatDuration(durationSeconds)}
+              </Text>
             </View>
             
             <View style={styles.infoRow}>
@@ -133,6 +323,12 @@ export default function EditVisitScreen({ route, navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#E9FFFA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#E9FFFA',
   },
   scrollContent: {
