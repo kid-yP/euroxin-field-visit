@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -7,10 +7,15 @@ import {
   StyleSheet,
   Image,
   Dimensions,
-  RefreshControl
+  RefreshControl,
+  ActivityIndicator,
+  Alert,
+  Linking
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
 import ExpandableSection from '../components/ExpandableSection';
 
 const { width } = Dimensions.get('window');
@@ -18,98 +23,212 @@ const { width } = Dimensions.get('window');
 export default function HomeScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [todayVisits, setTodayVisits] = useState([
-    { id: 1, name: 'John Pharmacy', status: 'Pending', time: '09:00 AM', bgColor: '#FFF5E6' },
-    { id: 2, name: 'City Medical', status: 'Completed', time: '11:30 AM', bgColor: '#E6FFEE' }
-  ]);
+  const [loading, setLoading] = useState(true);
+  const [todayVisits, setTodayVisits] = useState([]);
+  const [weekVisits, setWeekVisits] = useState([]);
+  const [monthVisits, setMonthVisits] = useState([]);
   
-  const [weekVisits, setWeekVisits] = useState([
-    { id: 3, name: 'Health Plus', status: 'Scheduled', date: 'Tomorrow', bgColor: '#E6F7FF' },
-    { id: 4, name: 'MediCare', status: 'Scheduled', date: 'Friday', bgColor: '#F0E6FF' }
-  ]);
-  
-  const [monthVisits, setMonthVisits] = useState([
-    { id: 5, name: 'PharmaOne', status: 'Scheduled', date: 'May 25', bgColor: '#FFF0E6' }
-  ]);
-
-  const metrics = [
+  const [metrics, setMetrics] = useState([
     { 
       title: "Today", 
-      value: todayVisits.length, 
-      progress: 0.5,
+      value: 0, 
+      progress: 0,
       icon: 'today-outline',
       color: '#FF6B00',
       bgColor: '#FFF5E6'
     },
     { 
       title: "Week", 
-      value: weekVisits.length, 
-      progress: 0.3,
+      value: 0, 
+      progress: 0,
       icon: 'calendar-outline',
       color: '#00C853',
       bgColor: '#E6F7FF'
     },
     { 
       title: "Month", 
-      value: monthVisits.length, 
-      progress: 0.1,
+      value: 0, 
+      progress: 0,
       icon: 'calendar-outline',
       color: '#2962FF',
       bgColor: '#F0E6FF'
     }
-  ];
+  ]);
+
+  const fetchVisits = async () => {
+    try {
+      const userId = auth.currentUser?.uid;
+      if (!userId) {
+        throw new Error("User not authenticated");
+      }
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      // Today's visits (exact date match)
+      const todayQuery = query(
+        collection(db, 'visits'),
+        where('userId', '==', userId),
+        where('date', '>=', Timestamp.fromDate(today)),
+        where('date', '<=', Timestamp.fromDate(endOfDay)),
+        orderBy('date', 'asc')
+      );
+      
+      const todaySnapshot = await getDocs(todayQuery);
+      const todayData = todaySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        bgColor: '#FFF5E6'
+      }));
+
+      // Week's visits (from today to end of week)
+      const endOfWeek = new Date(today);
+      endOfWeek.setDate(today.getDate() + 6);
+      endOfWeek.setHours(23, 59, 59, 999);
+      
+      const weekQuery = query(
+        collection(db, 'visits'),
+        where('userId', '==', userId),
+        where('date', '>=', Timestamp.fromDate(today)),
+        where('date', '<=', Timestamp.fromDate(endOfWeek)),
+        orderBy('date', 'asc')
+      );
+      
+      const weekSnapshot = await getDocs(weekQuery);
+      const weekData = weekSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        bgColor: '#E6F7FF'
+      }));
+
+      // Month's visits (from today to end of month)
+      const endOfMonth = new Date(today);
+      endOfMonth.setMonth(today.getMonth() + 1);
+      endOfMonth.setDate(0);
+      endOfMonth.setHours(23, 59, 59, 999);
+      
+      const monthQuery = query(
+        collection(db, 'visits'),
+        where('userId', '==', userId),
+        where('date', '>=', Timestamp.fromDate(today)),
+        where('date', '<=', Timestamp.fromDate(endOfMonth)),
+        orderBy('date', 'asc'),
+        limit(10)
+      );
+      
+      const monthSnapshot = await getDocs(monthQuery);
+      const monthData = monthSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        bgColor: '#F0E6FF'
+      }));
+
+      // Update state
+      setTodayVisits(todayData);
+      setWeekVisits(weekData);
+      setMonthVisits(monthData);
+      
+      // Update metrics
+      setMetrics([
+        { 
+          ...metrics[0], 
+          value: todayData.length, 
+          progress: Math.min(todayData.length / 5, 1) 
+        },
+        { 
+          ...metrics[1], 
+          value: weekData.length, 
+          progress: Math.min(weekData.length / 10, 1) 
+        },
+        { 
+          ...metrics[2], 
+          value: monthData.length, 
+          progress: Math.min(monthData.length / 20, 1) 
+        }
+      ]);
+
+    } catch (error) {
+      console.error("Error fetching visits:", error);
+      if (error.code === 'failed-precondition') {
+        Alert.alert(
+          "Index Required",
+          "Please create the Firestore index for visits collection. The index is being created automatically, please wait a few minutes and try again.",
+          [
+            {
+              text: "OK",
+              onPress: () => {}
+            }
+          ]
+        );
+      } else {
+        Alert.alert("Error", "Could not load visits data");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchVisits();
+  }, []);
+
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchVisits().then(() => setRefreshing(false));
+  }, []);
 
   const toggleMenu = () => {
     setShowMenu(!showMenu);
   };
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    setTimeout(() => {
-      setTodayVisits([...todayVisits].reverse());
-      setWeekVisits([...weekVisits].reverse());
-      setMonthVisits([...monthVisits].reverse());
-      setRefreshing(false);
-    }, 1500);
-  }, [todayVisits, weekVisits, monthVisits]);
-
   const renderVisitItem = (visit) => (
     <TouchableOpacity 
       key={visit.id} 
       style={[styles.visitItem, { backgroundColor: visit.bgColor }]}
-      onPress={() => navigation.navigate('VisitSummary', { visit })}
+      onPress={() => navigation.navigate('VisitSummary', { visitId: visit.id })}
     >
       <View style={styles.visitInfo}>
-        <Text style={styles.visitName}>{visit.name}</Text>
-        <View style={styles.visitMeta}>
-          <View style={styles.timeContainer}>
-            <Ionicons name="time-outline" size={14} color="#6B778C" style={styles.clockIcon} />
-            <Text style={styles.visitTime}>{visit.time || visit.date}</Text>
-          </View>
-          <View style={[
-            styles.statusBadge,
+        <Text style={styles.visitName}>{visit.contactName || 'Unnamed Visitor'}</Text>
+        <View style={styles.timeContainer}>
+          <Ionicons name="time-outline" size={14} color="#6B778C" style={styles.clockIcon} />
+          <Text style={styles.visitTime}>
+            {visit.date?.toDate?.().toLocaleDateString()} • {visit.date?.toDate?.().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) || 'No time'}
+          </Text>
+        </View>
+        <View style={[
+          styles.statusBadge,
+          { 
+            backgroundColor: visit.status === 'completed' ? '#E6FFEE' : 
+                            visit.status === 'pending' ? '#FFF5E6' : '#E6F7FF',
+            borderColor: visit.status === 'completed' ? '#00C853' : 
+                        visit.status === 'pending' ? '#FF6B00' : '#2962FF'
+          }
+        ]}>
+          <Text style={[
+            styles.visitStatus,
             { 
-              backgroundColor: visit.status === 'Completed' ? '#E6FFEE' : 
-                              visit.status === 'Pending' ? '#FFF5E6' : '#E6F7FF',
-              borderColor: visit.status === 'Completed' ? '#00C853' : 
-                          visit.status === 'Pending' ? '#FF6B00' : '#2962FF'
+              color: visit.status === 'completed' ? '#00C853' : 
+                     visit.status === 'pending' ? '#FF6B00' : '#2962FF'
             }
           ]}>
-            <Text style={[
-              styles.visitStatus,
-              { 
-                color: visit.status === 'Completed' ? '#00C853' : 
-                       visit.status === 'Pending' ? '#FF6B00' : '#2962FF'
-              }
-            ]}>
-              {visit.status}
-            </Text>
-          </View>
+            {visit.status || 'scheduled'}
+          </Text>
         </View>
       </View>
       <Ionicons name="chevron-forward" size={20} color="#6B778C" />
     </TouchableOpacity>
   );
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -136,26 +255,8 @@ export default function HomeScreen({ navigation }) {
         </View>
       </LinearGradient>
 
-      {/* Enhanced Dropdown Menu */}
       {showMenu && (
         <View style={styles.dropdownMenu}>
-          <TouchableOpacity 
-            style={styles.menuItem}
-            onPress={() => {
-              navigation.navigate('VisitDetails', { visit: {} });
-              setShowMenu(false);
-            }}
-            activeOpacity={0.7}
-          >
-            <View style={styles.menuIconContainer}>
-              <Ionicons name="document-text-outline" size={20} color="#007bff" />
-            </View>
-            <Text style={styles.menuItemText}>New Visit</Text>
-            <Ionicons name="chevron-forward" size={18} color="#6B778C" />
-          </TouchableOpacity>
-          
-          <View style={styles.menuDivider} />
-          
           <TouchableOpacity 
             style={styles.menuItem}
             onPress={() => {
@@ -240,6 +341,9 @@ export default function HomeScreen({ navigation }) {
           headerStyle={[styles.todayHeader, styles.sectionHeader]}
         >
           {todayVisits.map(renderVisitItem)}
+          {todayVisits.length === 0 && (
+            <Text style={styles.emptyText}>No visits scheduled for today</Text>
+          )}
         </ExpandableSection>
 
         <ExpandableSection 
@@ -250,6 +354,9 @@ export default function HomeScreen({ navigation }) {
           headerStyle={[styles.weekHeader, styles.sectionHeader]}
         >
           {weekVisits.map(renderVisitItem)}
+          {weekVisits.length === 0 && (
+            <Text style={styles.emptyText}>No visits scheduled this week</Text>
+          )}
         </ExpandableSection>
 
         <ExpandableSection 
@@ -260,6 +367,9 @@ export default function HomeScreen({ navigation }) {
           headerStyle={[styles.monthHeader, styles.sectionHeader]}
         >
           {monthVisits.map(renderVisitItem)}
+          {monthVisits.length === 0 && (
+            <Text style={styles.emptyText}>No visits scheduled this month</Text>
+          )}
         </ExpandableSection>
       </ScrollView>
     </View>
@@ -269,6 +379,12 @@ export default function HomeScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#E9FFFA',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     backgroundColor: '#E9FFFA',
   },
   header: {
@@ -435,7 +551,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
-    minHeight: 60,
+    minHeight: 80,
   },
   visitInfo: {
     flex: 1,
@@ -444,16 +560,12 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-SemiBold',
     fontSize: 15,
     color: '#172B4D',
-    marginBottom: 2,
-  },
-  visitMeta: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    marginBottom: 4,
   },
   timeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 6,
   },
   clockIcon: {
     marginRight: 4,
@@ -468,9 +580,17 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
+    alignSelf: 'flex-start',
+    marginTop: 4,
   },
   visitStatus: {
     fontFamily: 'Poppins-Medium',
     fontSize: 12,
+  },
+  emptyText: {
+    textAlign: 'center',
+    color: '#6B778C',
+    paddingVertical: 16,
+    fontFamily: 'Poppins-Regular',
   },
 });
