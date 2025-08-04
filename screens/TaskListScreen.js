@@ -9,7 +9,7 @@ import {
   RefreshControl,
   Alert,
 } from 'react-native';
-import { collection, query, getDocs, doc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc, orderBy } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -21,82 +21,68 @@ export default function TaskListScreen({ navigation }) {
   const [selectedTab, setSelectedTab] = useState('week');
   const [showDoneButton, setShowDoneButton] = useState(null);
 
-  // Sample tasks for this week
-  const sampleTasks = [
-    {
-      id: 'sample1',
-      title: 'Team Meeting',
-      description: 'Weekly team sync at conference room',
-      dueDate: new Date(Date.now() + 86400000 * 2),
-      status: 'pending',
-      priority: 'urgent'
-    },
-    {
-      id: 'sample2',
-      title: 'Project Deadline',
-      description: 'Submit final project deliverables',
-      dueDate: new Date(Date.now() + 86400000 * 5),
-      status: 'pending',
-      priority: 'scheduled'
-    },
-    {
-      id: 'sample3',
-      title: 'Client Call',
-      description: 'Discuss new requirements with ABC Corp',
-      dueDate: new Date(Date.now() + 86400000 * 1),
-      status: 'pending',
-      priority: 'urgent'
-    }
-  ];
-
-  const fetchTasks = async () => {
+  const fetchTasks = useCallback(async () => {
     try {
+      setLoading(true);
       const userId = auth.currentUser?.uid;
-      if (!userId) return;
+      if (!userId) {
+        setLoading(false);
+        return;
+      }
 
-      const q = query(collection(db, 'tasks'));
-      const snapshot = await getDocs(q);
-      const taskList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      // Merge with sample tasks
-      const allTasks = [...taskList, ...sampleTasks];
+      // Query tasks that belong to the current user
+      const tasksRef = collection(db, 'tasks');
+      const q = query(
+        tasksRef,
+        where('userId', '==', userId),
+        orderBy('dueDate', 'asc')
+      );
       
-      const sortedTasks = allTasks.sort((a, b) => {
-        if (a.status === 'completed' && b.status !== 'completed') return 1;
-        if (b.status === 'completed' && a.status !== 'completed') return -1;
-        return 0;
-      });
+      const querySnapshot = await getDocs(q);
+      const taskList = querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        // Convert Firestore Timestamp to Date if needed
+        dueDate: doc.data().dueDate?.toDate?.() || doc.data().dueDate
+      }));
 
-      setTasks(sortedTasks);
+      setTasks(taskList);
     } catch (err) {
       console.error('Error fetching tasks:', err);
+      Alert.alert('Error', 'Failed to load tasks. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    const unsubscribe = navigation.addListener('focus', fetchTasks);
+    return unsubscribe;
+  }, [navigation, fetchTasks]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchTasks();
-  }, []);
+  }, [fetchTasks]);
 
   const toggleStatus = async (task) => {
     try {
       const newStatus = task.status === 'completed' ? 'pending' : 'completed';
-      if (task.id.startsWith('sample')) {
-        setTasks(prev => prev.map(t => 
-          t.id === task.id ? {...t, status: newStatus} : t
-        ));
-      } else {
-        await updateDoc(doc(db, 'tasks', task.id), { status: newStatus });
-        fetchTasks();
-      }
-      setShowDoneButton(null); // Hide the button after marking as done
+      
+      // Update in Firestore
+      const taskRef = doc(db, 'tasks', task.id);
+      await updateDoc(taskRef, { 
+        status: newStatus,
+        updatedAt: new Date() 
+      });
+      
+      // Optimistically update local state
+      setTasks(prev => prev.map(t => 
+        t.id === task.id ? {...t, status: newStatus} : t
+      ));
+      
+      setShowDoneButton(null);
     } catch (err) {
       Alert.alert('Error', 'Failed to update task status.');
       console.error('Status toggle error:', err);
@@ -111,16 +97,11 @@ export default function TaskListScreen({ navigation }) {
   };
 
   const formatDueDate = (dueDate) => {
-    if (!dueDate) return 'No date';
+    if (!dueDate) return 'No due date';
+    
     try {
-      if (dueDate.toDate) {
-        return dueDate.toDate().toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric',
-          year: 'numeric'
-        });
-      }
-      return new Date(dueDate).toLocaleDateString('en-US', { 
+      const date = dueDate.toDate ? dueDate.toDate() : new Date(dueDate);
+      return date.toLocaleDateString('en-US', { 
         month: 'short', 
         day: 'numeric',
         year: 'numeric'
@@ -131,34 +112,42 @@ export default function TaskListScreen({ navigation }) {
   };
 
   const isSameWeek = (date) => {
-    const now = new Date();
-    const target = new Date(date);
-    const startOfWeek = new Date(now);
-    const endOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    return target >= startOfWeek && target <= endOfWeek;
+    if (!date) return false;
+    
+    try {
+      const now = new Date();
+      const target = date.toDate ? date.toDate() : new Date(date);
+      const startOfWeek = new Date(now);
+      const endOfWeek = new Date(now);
+      
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      
+      return target >= startOfWeek && target <= endOfWeek;
+    } catch {
+      return false;
+    }
   };
 
   const isSameMonth = (date) => {
-    const now = new Date();
-    const target = new Date(date);
-    return now.getFullYear() === target.getFullYear() &&
-           now.getMonth() === target.getMonth();
+    if (!date) return false;
+    
+    try {
+      const now = new Date();
+      const target = date.toDate ? date.toDate() : new Date(date);
+      return now.getFullYear() === target.getFullYear() &&
+             now.getMonth() === target.getMonth();
+    } catch {
+      return false;
+    }
   };
 
   const getFilteredTasks = () => {
     if (selectedTab === 'week') {
-      return tasks.filter(task => {
-        const d = task.dueDate?.toDate?.() || new Date(task.dueDate);
-        return d && isSameWeek(d);
-      });
+      return tasks.filter(task => isSameWeek(task.dueDate));
     }
     if (selectedTab === 'month') {
-      return tasks.filter(task => {
-        const d = task.dueDate?.toDate?.() || new Date(task.dueDate);
-        return d && isSameMonth(d);
-      });
+      return tasks.filter(task => isSameMonth(task.dueDate));
     }
     return tasks;
   };
@@ -311,6 +300,7 @@ export default function TaskListScreen({ navigation }) {
   );
 }
 
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -450,7 +440,7 @@ const styles = StyleSheet.create({
   moreButton: {
     position: 'absolute',
     right: 10,
-    bottom: 10,
+    bottom: 2,
     padding: 8,
   },
   emptyState: {
