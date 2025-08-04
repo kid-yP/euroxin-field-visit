@@ -1,88 +1,91 @@
+📍 Euroxin Field Visit App
+A mobile-first platform designed to streamline the planning, tracking, and reporting of field visits—perfect for marketers, supervisors, and admins in fast-moving field environments.
 
-📱 Euroxin Field Visit App
+🚀 Overview
+Euroxin Field Visit empowers field teams with real-time GPS check-ins, interactive maps, visit logging, task management, and knowledge resources—bundled in a clean React Native interface backed by Firebase.
 
-A mobile-first platform for field marketers, supervisors, and admins to efficiently plan, track, and log field visits, with real-time GPS and performance insights.
+📱 Key Features
+Visit Planning & Tracking
 
-🚀 Project Overview Attribute Description App Name Euroxin Field Visit Platforms Android & iOS (using React Native) Target Users Marketers (Field Reps), Supervisors (Regional Leads), Admins (Head Office) Core Features - Plan & track visits
-- GPS check-in/out
-- Log outcomes
-- View stock levels
-- Team supervision Tech Stack - Frontend: React Native
-- Backend: Firebase (Firestore, Auth, Functions)
-- Maps: Google Maps API
-- AI Tools: Lovable.dev, Claude AI
+Check-in/out via GPS & POIs
 
-📱 Mobile App Modules
+View past visits & visit outcomes
 
-🏠 Home / Dashboard Summary of visits: Today, This Week, This Month
-Expandable visit plans
+Smart Attendance
 
-📍 Attendance GPS + POI map
-View previous visits, contacts
+Auto check-out if >1km from visit zone
 
-Check-in enabled within geofence
+Geofence-triggered actions
 
-📋 Visit Details Capture contact info, interest levels, product interests, comments, photos
-Save & check out later
+Visit Summary & Logs
 
-🔁 Smart Auto Check-Out Auto-trigger if >1km from check-in without manual checkout
-Prompt: Check Out | Edit Info | Ignore
+Contact info, product interest, comments, images
 
-✅ Manual Check-Out Confirm visit summary and notes
-Submit button
+Task Management
 
-📆 Tasks Tabs: This Week, This Month
-Each task includes: title, type, date/time, location, status
+Weekly/monthly task assignment
 
-🧭 Field Reps Map (Supervisor Only) Live rep tracking map + activity info
-Scrollable list of reps
+Real-time progress tracking
 
-📦 Stock Companies stocking Euroxin
-View by product + contact details
+Live Field Rep Map
 
-🎓 Knowledge Center Training materials (PDF/video)
-Filter by category (Sales, Product, Compliance)
+Supervisor-only module
 
-Bookmark and updated tag
+Scrollable rep view + activity feed
 
-🙋 Profile / Account User profile, region, role
-App settings (notifications, language)
+Stock Monitoring
 
-🖥 Admin Interface (Web) Roles Admin: Full access
+Distributor/product listings & contacts
 
-Supervisor: Region monitoring
+Knowledge Center
 
-Marketer: Mobile-only
+Filterable training hub (Sales/Product/Compliance)
 
-Tech Stack Frontend: React / Next.js
+User Profiles
 
-Backend: Firebase Admin SDK / Supabase / Node.js
+Role-based access & customizable settings
 
-Auth: Firebase Auth (RBAC)
+🛠 Tech Stack
+Layer	Tools Used
+Frontend	React Native
+Backend	Firebase (Auth, Firestore, Functions)
+Maps	Google Maps API
+Admin Web	React, Next.js, Firebase SDK
+Hosting	Vercel, Firebase Hosting
+👥 Target Users
+Field Marketers (Mobile-only)
 
-Hosting: Firebase Hosting / Vercel
+Supervisors (Mobile + Admin access)
 
-🧩 Admin Modules
+Admins (Full access via web portal)
 
-📊 Dashboard KPIs: Total Visits, Completion Rates, Top Performers
-Charts: Visits by Region, Product Trends
+🌐 Admin Web Modules
+Dashboard: KPIs, charts, completion rates
 
-👥 User Management Create/edit users, assign regions/roles
-Password reset & export tools
+User Management: Region/role assignment
 
-📌 Task Management Create recurring/one-off tasks
-Track completion
+Task Scheduler: Recurring/one-off plans
 
-📍 Real-Time Rep Tracking Live maps + timeline view
+Live Tracking: Timeline/map view of reps
 
-🏪 Stock & Distributors Manage distributor contacts + stocked products
+Stock Management: Distributor oversight
 
-📚 Knowledge Center Admin Upload/edit training content
+Knowledge Uploads: PDF/video updates
 
-Track engagement
+Settings: Visit radius, branding, languages
 
-⚙️ System Settings Configuration: visit thresholds, radius, branding, language
+🔐 Security
+Role-based access control (RBAC)
 
-🔐 Security & Logs Role-based access control
+Audit logs and user session protection
 
-...
+📦 Installation
+bash
+# Clone the repo
+git clone https://github.com/kid-yP/euroxin-field-visit.git
+
+# Install dependencies
+npm install
+
+# Run the app
+npm start
