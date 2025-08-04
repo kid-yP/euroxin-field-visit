@@ -7,9 +7,11 @@ import {
   Image,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
+  Alert
 } from 'react-native';
 import MapView, { Marker } from 'react-native-maps';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 
@@ -17,6 +19,7 @@ const { width } = Dimensions.get('window');
 
 export default function RepTrackingScreen({ navigation }) {
   const [reps, setReps] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [region, setRegion] = useState({
     latitude: 9.03,
     longitude: 38.75,
@@ -25,29 +28,68 @@ export default function RepTrackingScreen({ navigation }) {
   });
 
   useEffect(() => {
+    let unsubscribe;
+
     const fetchReps = async () => {
       try {
+        // First load with getDocs for initial data
         const snapshot = await getDocs(collection(db, 'repLocations'));
-        const repData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-        setReps(repData);
+        const initialReps = snapshot.docs.map(doc => ({
+          id: doc.id,
+          ...formatRepData(doc.data())
+        }));
+        setReps(initialReps);
+        setLoading(false);
+
+        // Set up real-time listener
+        unsubscribe = onSnapshot(collection(db, 'repLocations'), (snapshot) => {
+          const updatedReps = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...formatRepData(doc.data())
+          }));
+          setReps(updatedReps);
+        });
+
       } catch (error) {
         console.error('Error fetching rep data:', error);
+        Alert.alert('Error', 'Failed to load representative data');
+        setLoading(false);
       }
     };
 
+    const formatRepData = (repData) => {
+      return {
+        name: repData.name || 'Unknown',
+        userId: repData.userId || '',
+        avatarURL: repData.avatarURL || 'https://via.placeholder.com/150',
+        currentStatus: Array.isArray(repData.currentStatus) ? repData.currentStatus : ['offline'],
+        coords: repData.lastCheckIn?.location || null,
+        lastUpdated: repData.lastUpdated?.toDate?.() || null,
+        lastCheckIn: {
+          location: repData.lastCheckIn?.location || null,
+          timestamp: repData.lastCheckIn?.timestamp?.toDate?.() || null
+        }
+      };
+    };
+
     fetchReps();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, []);
 
   const getStatusColor = (statusArray = []) => {
     if (!Array.isArray(statusArray) || statusArray.length === 0) return '#FF3B30';
     if (statusArray.includes('checked-in')) return '#00C853';
-    if (statusArray.includes('moving') || statusArray.includes('idle')) return '#FFAB00';
+    if (statusArray.includes('moving')) return '#FFAB00';
+    if (statusArray.includes('idle')) return '#FFAB00';
     return '#FF3B30';
   };
 
   const getStatusText = (statusArray = []) => {
     if (!Array.isArray(statusArray)) return 'Offline';
-    if (statusArray.includes('checked-in')) return 'Checked In';
+    if (statusArray.includes('checked-in')) return 'Check';
     if (statusArray.includes('moving')) return 'Moving';
     if (statusArray.includes('idle')) return 'Idle';
     return 'Offline';
@@ -59,6 +101,15 @@ export default function RepTrackingScreen({ navigation }) {
      rep.currentStatus.includes('moving') ||
      rep.currentStatus.includes('idle'))
   ).length;
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#007bff" />
+        <Text>Loading representatives...</Text>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.container}>
@@ -74,12 +125,8 @@ export default function RepTrackingScreen({ navigation }) {
                   latitude: rep.coords.latitude,
                   longitude: rep.coords.longitude,
                 }}
-                title={rep.name || 'Unnamed Rep'}
-                description={`Status: ${
-                  Array.isArray(rep.currentStatus)
-                    ? rep.currentStatus.join(', ')
-                    : 'N/A'
-                }`}
+                title={rep.name}
+                description={`Status: ${getStatusText(rep.currentStatus)}`}
               >
                 <View style={styles.markerContainer}>
                   <Ionicons
@@ -160,8 +207,9 @@ export default function RepTrackingScreen({ navigation }) {
             >
               <View style={styles.avatarContainer}>
                 <Image
-                  source={{ uri: rep.avatarURL || 'https://via.placeholder.com/150' }}
+                  source={{ uri: rep.avatarURL }}
                   style={styles.avatar}
+                  defaultSource={{ uri: 'https://via.placeholder.com/150' }}
                 />
                 <View style={[
                   styles.statusIndicator,
@@ -169,7 +217,7 @@ export default function RepTrackingScreen({ navigation }) {
                 ]} />
               </View>
               <Text style={styles.repName} numberOfLines={1}>
-                {rep.name || 'Unnamed Rep'}
+                {rep.name}
               </Text>
               <View style={[
                 styles.statusBadge,
@@ -195,8 +243,14 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#E9FFFA',
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#E9FFFA',
+  },
   mapBox: {
-    height: width * 0.8,
+    height: width * 0.75,
     margin: 16,
     borderRadius: 16,
     overflow: 'hidden',
@@ -285,7 +339,7 @@ const styles = StyleSheet.create({
     borderRightWidth: 1,
     borderColor: '#E0E0E0',
     bottom: 18,
-    marginBottom: -35,
+    marginBottom: -18,
   },
   repsHeader: {
     flexDirection: 'row',
@@ -319,7 +373,8 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: 'relative',
-    marginBottom: 8,
+    marginBottom: -3,
+    height: 30,
   },
   avatar: {
     width: 60,
@@ -330,7 +385,7 @@ const styles = StyleSheet.create({
   },
   statusIndicator: {
     position: 'absolute',
-    bottom: 0,
+    bottom: -26,
     right: 0,
     width: 14,
     height: 14,
@@ -344,6 +399,7 @@ const styles = StyleSheet.create({
     color: '#172B4D',
     textAlign: 'center',
     marginBottom: 6,
+    bottom: -33,
   },
   statusBadge: {
     paddingHorizontal: 6,
@@ -351,6 +407,7 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginTop: 4,
     alignSelf: 'center',
+    bottom: -28,
   },
   statusText: {
     fontFamily: 'Poppins-SemiBold',
