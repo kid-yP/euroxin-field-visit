@@ -12,18 +12,24 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Picker } from '@react-native-picker/picker';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { doc, updateDoc, addDoc, collection, deleteDoc } from 'firebase/firestore';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
 export default function TaskDetailsScreen({ route, navigation }) {
-  const { task, mode } = route.params || {};
+  // Parse the date string back to Date object if it exists
+  const { task: rawTask, mode } = route.params || {};
+  const task = rawTask ? {
+    ...rawTask,
+    dueDate: rawTask.dueDate ? new Date(rawTask.dueDate) : null
+  } : null;
+  
   const isCreate = mode === 'create';
 
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
-  const [dueDate, setDueDate] = useState(task?.dueDate?.toDate?.() || new Date());
+  const [dueDate, setDueDate] = useState(task?.dueDate || new Date());
   const [status, setStatus] = useState(task?.status || 'pending');
   const [priority, setPriority] = useState(task?.priority || 'pending');
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -55,7 +61,7 @@ export default function TaskDetailsScreen({ route, navigation }) {
     const hasChanges = 
       title !== (task?.title || '') ||
       description !== (task?.description || '') ||
-      dueDate.getTime() !== (task?.dueDate?.toDate?.() || new Date()).getTime() ||
+      (task?.dueDate ? dueDate.getTime() !== task.dueDate.getTime() : dueDate.getTime() !== new Date().getTime()) ||
       status !== (task?.status || 'pending') ||
       priority !== (task?.priority || 'pending');
 
@@ -84,35 +90,39 @@ export default function TaskDetailsScreen({ route, navigation }) {
   const handleSave = async () => {
     if (!title.trim()) {
       Alert.alert('Validation', 'Title is required.');
+      titleInputRef.current?.focus();
       return;
     }
 
     const now = new Date();
-    if (dueDate < now.setHours(0, 0, 0, 0)) {
+    now.setHours(0, 0, 0, 0);
+    if (dueDate < now) {
       Alert.alert('Validation', 'Due date cannot be in the past.');
       return;
     }
 
     try {
+      const userId = auth.currentUser?.uid;
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
+      const taskData = {
+        title,
+        description,
+        dueDate, // Firestore will convert this to a Timestamp automatically
+        status,
+        priority,
+        userId,
+        updatedAt: new Date(),
+      };
+
       if (isCreate) {
-        await addDoc(collection(db, 'tasks'), {
-          title,
-          description,
-          dueDate,
-          status,
-          priority,
-          createdAt: new Date(),
-        });
+        taskData.createdAt = new Date();
+        await addDoc(collection(db, 'tasks'), taskData);
       } else {
         const taskRef = doc(db, 'tasks', task.id);
-        await updateDoc(taskRef, {
-          title,
-          description,
-          dueDate,
-          status,
-          priority,
-          updatedAt: new Date(),
-        });
+        await updateDoc(taskRef, taskData);
       }
 
       navigation.goBack();
