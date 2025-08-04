@@ -8,12 +8,15 @@ import {
   TouchableOpacity,
   RefreshControl,
   Alert,
-  Linking,
   Modal,
   Animated,
-  Easing
+  Easing,
+  Image,
+  ActivityIndicator,
+  Dimensions,
+  Clipboard
 } from 'react-native';
-import { Feather, Ionicons } from '@expo/vector-icons';
+import { Feather, MaterialIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   collection,
@@ -21,40 +24,48 @@ import {
   getDocs,
   doc,
   getDoc,
-  setDoc,
+  updateDoc,
+  orderBy,
+  serverTimestamp,
+  increment,
+  setDoc
 } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
+const { width } = Dimensions.get('window');
+
 export default function KnowledgeCenterScreen({ navigation }) {
-  const [data, setData] = useState([]);
-  const [filtered, setFiltered] = useState([]);
+  const [resources, setResources] = useState([]);
+  const [filteredResources, setFilteredResources] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedType, setSelectedType] = useState('all');
-  const [bookmarkedIds, setBookmarkedIds] = useState([]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [showTypeDropdown, setShowTypeDropdown] = useState(false);
   const [showSearchBar, setShowSearchBar] = useState(false);
   const [searchBarHeight] = useState(new Animated.Value(0));
+  const [expandedId, setExpandedId] = useState(null);
 
+  // Categories and types with icons
   const categories = [
-    { label: 'All', value: 'all' },
-    { label: 'Sales', value: 'sales' },
-    { label: 'Products', value: 'products' },
-    { label: 'Procedures', value: 'procedures' },
-    { label: 'Training', value: 'training' },
+    { label: 'All', value: 'all', icon: 'grid' },
+    { label: 'Sales', value: 'sales', icon: 'dollar-sign' },
+    { label: 'Products', value: 'products', icon: 'box' },
+    { label: 'Procedures', value: 'procedures', icon: 'clipboard' },
+    { label: 'Training', value: 'training', icon: 'award' },
   ];
 
   const types = [
-    { label: 'All', value: 'all' },
-    { label: 'Articles', value: 'articles' },
-    { label: 'PDFs', value: 'pdfs' },
-    { label: 'Videos', value: 'videos' },
-    { label: 'Links', value: 'links' },
+    { label: 'All', value: 'all', icon: 'file' },
+    { label: 'Articles', value: 'article', icon: 'file-text' },
+    { label: 'PDFs', value: 'pdf', icon: 'picture-as-pdf' },
+    { label: 'Videos', value: 'video', icon: 'video' },
+    { label: 'Links', value: 'link', icon: 'link' },
   ];
 
+  // Toggle search bar animation
   const toggleSearchBar = () => {
     setShowSearchBar(!showSearchBar);
     Animated.timing(searchBarHeight, {
@@ -65,196 +76,315 @@ export default function KnowledgeCenterScreen({ navigation }) {
     }).start();
   };
 
-  const fetchBookmarks = async () => {
-    try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-
-      const userRef = doc(db, 'users', uid);
-      const userSnap = await getDoc(userRef);
-      setBookmarkedIds(userSnap.exists() ? userSnap.data().bookmarkedItems || [] : []);
-    } catch (error) {
-      console.error('Bookmark error:', error);
-    }
+  // Toggle resource expansion
+  const toggleExpand = (id) => {
+    setExpandedId(expandedId === id ? null : id);
   };
 
-  const fetchData = async () => {
+  // Fetch knowledge resources
+  const fetchResources = useCallback(async () => {
     try {
-      const q = query(collection(db, 'knowledgeCenter'));
+      setLoading(true);
+      const user = auth.currentUser;
+      if (!user) {
+        console.log('User not authenticated');
+        return;
+      }
+
+      const resourcesRef = collection(db, 'knowledgeResources ');
+      const q = query(resourcesRef, orderBy('updatedAt', 'desc'));
       const snapshot = await getDocs(q);
-      const list = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-      }));
-      setData(list);
-      filterData(list, selectedCategory, selectedType, searchQuery);
+      
+      // Validate each document exists and has required fields
+      const validResources = [];
+      const invalidResourceIds = [];
+      
+      for (const doc of snapshot.docs) {
+        const data = doc.data();
+        if (data && data.title) { // Basic validation
+          validResources.push({
+            id: doc.id,
+            ...data,
+            imageUrl: data.imageUrl || 'https://placehold.co/392x212?text=No+Preview',
+            type: data.type || 'article',
+            category: data.category || 'general',
+            title: data.title || 'Untitled Resource',
+            url: data.url || '',
+            description: data.description || '',
+            updatedAt: data.updatedAt || data.createdAt || serverTimestamp(),
+            viewCount: data.viewCount || 0,
+          });
+        } else {
+          invalidResourceIds.push(doc.id);
+          console.warn('Invalid resource document:', doc.id);
+        }
+      }
+      
+      if (invalidResourceIds.length > 0) {
+        console.log('Filtered out invalid resources:', invalidResourceIds);
+      }
+      
+      setResources(validResources);
+      filterResources(validResources, selectedCategory, selectedType, searchQuery);
     } catch (err) {
-      console.error('Fetch error:', err);
-      Alert.alert('Error', 'Failed to load data');
+      console.error('Error fetching resources:', err);
+      Alert.alert('Error', 'Failed to load resources. Please try again.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [selectedCategory, selectedType, searchQuery]);
 
-  const onRefresh = useCallback(() => {
-    setRefreshing(true);
-    fetchData();
-    fetchBookmarks();
-  }, []);
-
-  useEffect(() => {
-    fetchData();
-    fetchBookmarks();
-  }, []);
-
-  const filterData = (source, category, type, query) => {
-    let list = [...source];
+  // Filter resources based on selections
+  const filterResources = (source, category, type, queryText) => {
+    let filtered = [...source];
     
-    if (category !== 'all') list = list.filter(item => item.category === category);
-    if (type !== 'all') list = list.filter(item => item.type === type);
-    if (query) {
-      const lowerQuery = query.toLowerCase();
-      list = list.filter(item =>
+    if (category !== 'all') {
+      filtered = filtered.filter(item => item.category === category);
+    }
+    
+    if (type !== 'all') {
+      filtered = filtered.filter(item => item.type === type);
+    }
+    
+    if (queryText) {
+      const lowerQuery = queryText.toLowerCase();
+      filtered = filtered.filter(item =>
         item.title.toLowerCase().includes(lowerQuery) ||
-        (item.description && item.description.toLowerCase().includes(lowerQuery))
+        (item.description && item.description.toLowerCase().includes(lowerQuery)) ||
+        (item.tags && item.tags.some(tag => tag.toLowerCase().includes(lowerQuery)))
       );
     }
     
-    setFiltered(list);
+    setFilteredResources(filtered);
   };
 
+  // Handle search input
   const handleSearch = (text) => {
     setSearchQuery(text);
-    filterData(data, selectedCategory, selectedType, text);
+    filterResources(resources, selectedCategory, selectedType, text);
   };
 
+  // Handle category selection
   const handleCategorySelect = (value) => {
     setSelectedCategory(value);
     setShowCategoryDropdown(false);
-    filterData(data, value, selectedType, searchQuery);
+    filterResources(resources, value, selectedType, searchQuery);
   };
 
+  // Handle type selection
   const handleTypeSelect = (value) => {
     setSelectedType(value);
     setShowTypeDropdown(false);
-    filterData(data, selectedCategory, value, searchQuery);
+    filterResources(resources, selectedCategory, value, searchQuery);
   };
 
-  const getTypeColor = (type) => {
-    const colors = {
-      articles: '#E3F2FD',
-      pdfs: '#E8F5E9',
-      videos: '#FFEBEE',
-      links: '#FFF5E6'
-    };
-    return colors[type] || '#F5F5F5';
-  };
-
-  const toggleBookmark = async (itemId) => {
-    try {
-      const uid = auth.currentUser?.uid;
-      if (!uid) return;
-
-      const userRef = doc(db, 'users', uid);
-      const userSnap = await getDoc(userRef);
-      
-      let bookmarks = userSnap.exists() ? userSnap.data().bookmarkedItems || [] : [];
-      const updated = bookmarks.includes(itemId)
-        ? bookmarks.filter(id => id !== itemId)
-        : [...bookmarks, itemId];
-
-      await setDoc(userRef, { bookmarkedItems: updated }, { merge: true });
-      setBookmarkedIds(updated);
-    } catch (err) {
-      console.error('Bookmark error:', err);
+  // Get icon for resource type
+  const getTypeIcon = (type) => {
+    const typeConfig = types.find(t => t.value === type);
+    if (type === 'pdf') {
+      return <MaterialIcons name={typeConfig.icon} size={18} color="#6B778C" />;
     }
+    return <Feather name={typeConfig?.icon || 'file'} size={18} color="#6B778C" />;
   };
 
-  const handleDownload = async (url) => {
-    if (!url) {
-      Alert.alert('Error', 'No download link available');
+  // Handle viewing resource URL
+  const handleViewResource = async (resource) => {
+    if (!resource.url) {
+      Alert.alert('Error', 'No resource URL available');
       return;
     }
 
     try {
-      const formattedUrl = url.startsWith('http') ? url : `https://${url}`;
-      const supported = await Linking.canOpenURL(formattedUrl);
+      const resourceRef = doc(db, 'knowledgeResources', resource.id);
       
-      if (supported) {
-        await Linking.openURL(formattedUrl);
-      } else {
-        Alert.alert('Error', "Cannot open this resource");
+      // First check if resource exists
+      const resourceDoc = await getDoc(resourceRef);
+      if (!resourceDoc.exists()) {
+        Alert.alert('Error', 'This resource no longer exists');
+        // Remove from local state if document doesn't exist
+        setResources(prev => prev.filter(r => r.id !== resource.id));
+        setFilteredResources(prev => prev.filter(r => r.id !== resource.id));
+        return;
       }
+
+      // Update view count
+      await updateDoc(resourceRef, {
+        viewCount: increment(1),
+        lastViewedAt: serverTimestamp(),
+        lastViewedBy: auth.currentUser?.uid
+      });
+
+      // Update local state immediately
+      setResources(prev => prev.map(r => {
+        if (r.id === resource.id) {
+          return {
+            ...r,
+            viewCount: (r.viewCount || 0) + 1
+          };
+        }
+        return r;
+      }));
+      
+      setFilteredResources(prev => prev.map(r => {
+        if (r.id === resource.id) {
+          return {
+            ...r,
+            viewCount: (r.viewCount || 0) + 1
+          };
+        }
+        return r;
+      }));
+
     } catch (error) {
-      console.error('Error opening URL:', error);
-      Alert.alert('Error', 'Failed to open resource');
+      console.error('Error viewing resource:', error);
+      Alert.alert('Error', 'Failed to update view count');
     }
   };
 
-  const formatTimeAgo = (timestamp) => {
-    if (!timestamp?.toDate) return 'Unknown';
-    const seconds = Math.floor((new Date() - timestamp.toDate()) / 1000);
-    
-    if (seconds < 60) return `${seconds} sec ago`;
-    if (seconds < 3600) return `${Math.floor(seconds/60)} min ago`;
-    if (seconds < 86400) return `${Math.floor(seconds/3600)} hr ago`;
-    return `${Math.floor(seconds/86400)} days ago`;
+  // Copy URL to clipboard
+  const copyToClipboard = (url) => {
+    Clipboard.setString(url);
+    Alert.alert('Copied', 'URL copied to clipboard');
   };
 
+  // Format relative time
+  const formatTimeAgo = (timestamp) => {
+    if (!timestamp?.toDate) return 'Recently';
+    const date = timestamp.toDate();
+    const now = new Date();
+    const diff = now - date;
+    const seconds = Math.floor(diff / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+
+    if (seconds < 60) return 'Just now';
+    if (minutes < 60) return `${minutes} min ago`;
+    if (hours < 24) return `${hours} hr ago`;
+    if (days < 7) return `${days} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  // Render resource item
   const renderItem = ({ item }) => (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <View style={[styles.typeBadge, { backgroundColor: getTypeColor(item.type) }]}>
-          <Text style={styles.typeText}>{item.type.toUpperCase()}</Text>
+    <View style={styles.resourceCard}>
+      <TouchableOpacity 
+        style={styles.resourceHeader}
+        onPress={() => toggleExpand(item.id)}
+        activeOpacity={0.8}
+      >
+        <Image 
+          source={{ uri: item.imageUrl }} 
+          style={styles.resourceImage}
+          resizeMode="cover"
+        />
+        <View style={styles.resourceTitleContainer}>
+          <Text style={styles.resourceName}>{item.title}</Text>
+          <View style={styles.resourceMeta}>
+            <Text style={styles.resourceType}>{item.type.toUpperCase()}</Text>
+            <Text style={styles.resourceCategory}>{item.category}</Text>
+          </View>
         </View>
-        <TouchableOpacity 
-          onPress={() => toggleBookmark(item.id)}
-          hitSlop={{ top: 20, bottom: 20, left: 20, right: 20 }}
-        >
-          <Ionicons
-            name={bookmarkedIds.includes(item.id) ? 'bookmark' : 'bookmark-outline'}
-            size={24}
-            color={bookmarkedIds.includes(item.id) ? '#007bff' : '#6B778C'}
-          />
-        </TouchableOpacity>
-      </View>
+        <Feather 
+          name={expandedId === item.id ? 'chevron-up' : 'chevron-down'} 
+          size={24} 
+          color="#6B778C" 
+        />
+      </TouchableOpacity>
       
-      <Text style={styles.cardTitle}>{item.title}</Text>
-      
-      {item.description && (
-        <Text style={styles.cardDescription} numberOfLines={2}>
-          {item.description}
-        </Text>
+      {expandedId === item.id && (
+        <View style={styles.detailsContainer}>
+          {item.description && (
+            <View style={styles.detailRow}>
+              <Feather name="file-text" size={18} color="#6B778C" style={styles.detailIcon} />
+              <Text style={styles.detailText} numberOfLines={3}>
+                {item.description}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.detailRow}>
+            <Feather name="clock" size={18} color="#6B778C" style={styles.detailIcon} />
+            <Text style={styles.detailText}>
+              Updated {formatTimeAgo(item.updatedAt)}
+            </Text>
+          </View>
+          
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <Feather name="eye" size={16} color="#6B778C" />
+              <Text style={styles.statText}>{item.viewCount} views</Text>
+            </View>
+          </View>
+          
+          {item.url && (
+            <TouchableOpacity 
+              style={styles.urlContainer}
+              onPress={() => copyToClipboard(item.url)}
+              activeOpacity={0.7}
+            >
+              <Feather name="link" size={18} color="#6B778C" style={styles.detailIcon} />
+              <Text style={styles.urlText} numberOfLines={1}>
+                {item.url}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
       )}
-      
-      <View style={styles.cardFooter}>
-        <Text style={styles.timeText}>{formatTimeAgo(item.lastUpdated)}</Text>
-        
-        <TouchableOpacity
-          style={styles.downloadButton}
-          onPress={() => handleDownload(item.url)}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.downloadButtonText}>OPEN</Text>
-          <Feather name="external-link" size={16} color="#007bff" />
-        </TouchableOpacity>
-      </View>
     </View>
   );
 
-  const renderDropdownItem = (item, onSelect) => (
+  // Render dropdown item
+  const renderDropdownItem = (item) => (
     <TouchableOpacity
       style={styles.dropdownItem}
-      onPress={() => onSelect(item.value)}
-      key={item.value} // Added key prop here
+      onPress={() => {
+        if (item.value === selectedCategory || item.value === selectedType) return;
+        if (categories.some(c => c.value === item.value)) {
+          handleCategorySelect(item.value);
+        } else {
+          handleTypeSelect(item.value);
+        }
+      }}
+      key={item.value}
     >
+      {item.value === 'pdf' ? (
+        <MaterialIcons name={item.icon} size={16} color="#6B778C" style={styles.dropdownIcon} />
+      ) : (
+        <Feather name={item.icon} size={16} color="#6B778C" style={styles.dropdownIcon} />
+      )}
       <Text style={styles.dropdownItemText}>{item.label}</Text>
     </TouchableOpacity>
   );
 
+  // Load data when screen focuses
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (auth.currentUser) {
+        fetchResources();
+      }
+    });
+    return unsubscribe;
+  }, [navigation, fetchResources]);
+
+  // Handle pull-to-refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchResources();
+  }, [fetchResources]);
+
+  if (loading && !refreshing) {
+    return (
+      <View style={[styles.mainContainer, styles.center]}>
+        <ActivityIndicator size="large" color="#007bff" />
+      </View>
+    );
+  }
+
   return (
-    <View style={styles.container}>
+    <View style={styles.mainContainer}>
+      {/* Header with gradient */}
       <LinearGradient
         colors={['#38B6FF4D', '#80CC28']}
         start={{ x: 0, y: 0 }}
@@ -272,12 +402,14 @@ export default function KnowledgeCenterScreen({ navigation }) {
         </View>
       </LinearGradient>
 
+      {/* Search Bar */}
       <Animated.View style={[styles.searchContainer, { height: searchBarHeight }]}>
         <View style={styles.searchInnerContainer}>
           <Feather name="search" size={20} color="#6B778C" style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
             placeholder="Search resources..."
+            placeholderTextColor="#6B778C"
             value={searchQuery}
             onChangeText={handleSearch}
             returnKeyType="search"
@@ -291,6 +423,7 @@ export default function KnowledgeCenterScreen({ navigation }) {
         </View>
       </Animated.View>
 
+      {/* Filter Row */}
       <View style={styles.filterRow}>
         <View style={styles.filterContainer}>
           <Text style={styles.filterLabel}>Category</Text>
@@ -298,6 +431,11 @@ export default function KnowledgeCenterScreen({ navigation }) {
             style={styles.filterBox}
             onPress={() => setShowCategoryDropdown(true)}
           >
+            <Feather 
+              name={categories.find(c => c.value === selectedCategory)?.icon || 'grid'} 
+              size={16} 
+              color="#007bff" 
+            />
             <Text style={styles.filterValue}>
               {categories.find(c => c.value === selectedCategory)?.label}
             </Text>
@@ -311,6 +449,19 @@ export default function KnowledgeCenterScreen({ navigation }) {
             style={styles.filterBox}
             onPress={() => setShowTypeDropdown(true)}
           >
+            {selectedType === 'pdf' ? (
+              <MaterialIcons 
+                name={types.find(t => t.value === selectedType)?.icon || 'picture-as-pdf'} 
+                size={16} 
+                color="#007bff" 
+              />
+            ) : (
+              <Feather 
+                name={types.find(t => t.value === selectedType)?.icon || 'file'} 
+                size={16} 
+                color="#007bff" 
+              />
+            )}
             <Text style={styles.filterValue}>
               {types.find(t => t.value === selectedType)?.label}
             </Text>
@@ -332,7 +483,7 @@ export default function KnowledgeCenterScreen({ navigation }) {
           onPress={() => setShowCategoryDropdown(false)}
         >
           <View style={styles.dropdownContainer}>
-            {categories.map(item => renderDropdownItem(item, handleCategorySelect))}
+            {categories.map(renderDropdownItem)}
           </View>
         </TouchableOpacity>
       </Modal>
@@ -350,15 +501,17 @@ export default function KnowledgeCenterScreen({ navigation }) {
           onPress={() => setShowTypeDropdown(false)}
         >
           <View style={styles.dropdownContainer}>
-            {types.map(item => renderDropdownItem(item, handleTypeSelect))}
+            {types.map(renderDropdownItem)}
           </View>
         </TouchableOpacity>
       </Modal>
 
+      {/* Resources List */}
       <FlatList
-        data={filtered}
+        data={filteredResources}
         renderItem={renderItem}
-        keyExtractor={item => item.id} // This ensures each item has a unique key
+        keyExtractor={item => item.id}
+        contentContainerStyle={styles.listContent}
         refreshControl={
           <RefreshControl 
             refreshing={refreshing} 
@@ -368,22 +521,35 @@ export default function KnowledgeCenterScreen({ navigation }) {
           />
         }
         ListEmptyComponent={
-          !loading && (
-            <View style={styles.emptyState}>
-              <Feather name="book-open" size={48} color="#6B778C" />
-              <Text style={styles.emptyText}>No resources found</Text>
-            </View>
-          )
+          <View style={styles.emptyState}>
+            <Feather name="book-open" size={48} color="#6B778C" />
+            <Text style={styles.emptyText}>
+              {searchQuery || selectedCategory !== 'all' || selectedType !== 'all' 
+                ? 'No matching resources found' 
+                : 'No resources available'}
+            </Text>
+            {(searchQuery || selectedCategory !== 'all' || selectedType !== 'all') && (
+              <TouchableOpacity
+                style={styles.resetButton}
+                onPress={() => {
+                  setSelectedCategory('all');
+                  setSelectedType('all');
+                  setSearchQuery('');
+                  filterResources(resources, 'all', 'all', '');
+                }}
+              >
+                <Text style={styles.resetButtonText}>Reset Filters</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         }
-        contentContainerStyle={styles.listContent}
-        style={styles.list}
       />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  mainContainer: {
     flex: 1,
     backgroundColor: '#E9FFFA',
   },
@@ -430,6 +596,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
+    paddingVertical: 0,
+    height: 40,
+    paddingLeft: 4,
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
   filterRow: {
     flexDirection: 'row',
@@ -463,6 +634,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
     color: '#172B4D',
+    marginLeft: 8,
+    flex: 1,
   },
   dropdownOverlay: {
     flex: 1,
@@ -478,79 +651,123 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   dropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#f0f0f0',
+  },
+  dropdownIcon: {
+    marginRight: 12,
   },
   dropdownItemText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 16,
     color: '#172B4D',
-  },
-  list: {
     flex: 1,
-    paddingBottom: 20,
   },
   listContent: {
-    paddingHorizontal: 16,
+    padding: 16,
     paddingBottom: 20,
-    flexGrow: 1,
   },
-  card: {
+  resourceCard: {
     backgroundColor: 'white',
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
+    marginBottom: 16,
     elevation: 2,
   },
-  cardHeader: {
+  resourceHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    justifyContent: 'space-between',
   },
-  typeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 20,
+  resourceImage: {
+    width: 60,
+    height: 60,
+    borderRadius: 8,
+    marginRight: 12,
   },
-  typeText: {
-    fontFamily: 'Poppins-Medium',
-    fontSize: 12,
-    color: '#172B4D',
+  resourceTitleContainer: {
+    flex: 1,
   },
-  cardTitle: {
+  resourceName: {
     fontFamily: 'Poppins-SemiBold',
     fontSize: 16,
     color: '#172B4D',
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  cardDescription: {
+  resourceMeta: {
+    flexDirection: 'row',
+  },
+  resourceType: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+    color: '#007bff',
+    backgroundColor: '#F0F7FF',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  resourceCategory: {
+    fontFamily: 'Poppins-Medium',
+    fontSize: 12,
+    color: '#6B778C',
+    backgroundColor: '#F8F9FA',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  detailsContainer: {
+    marginTop: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#F0F0F0',
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  detailIcon: {
+    marginRight: 10,
+    width: 24,
+  },
+  detailText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 14,
     color: '#6B778C',
-    marginBottom: 12,
-    lineHeight: 20,
+    flex: 1,
   },
-  cardFooter: {
+  statsContainer: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginVertical: 12,
+  },
+  statItem: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  timeText: {
+  statText: {
     fontFamily: 'Poppins-Regular',
     fontSize: 12,
     color: '#6B778C',
+    marginLeft: 6,
   },
-  downloadButton: {
+  urlContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    marginBottom: 12,
+    backgroundColor: '#F8F9FA',
+    padding: 10,
+    borderRadius: 8,
   },
-  downloadButtonText: {
-    fontFamily: 'Poppins-SemiBold',
+  urlText: {
+    fontFamily: 'Poppins-Regular',
     fontSize: 14,
     color: '#007bff',
-    marginRight: 4,
+    flex: 1,
   },
   emptyState: {
     alignItems: 'center',
@@ -561,5 +778,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#6B778C',
     marginTop: 16,
+    textAlign: 'center',
+  },
+  resetButton: {
+    marginTop: 16,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: '#007bff',
+    borderRadius: 20,
+  },
+  resetButtonText: {
+    fontFamily: 'Poppins-SemiBold',
+    fontSize: 14,
+    color: 'white',
+  },
+  center: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    flex: 1,
   },
 });
