@@ -1,4 +1,3 @@
-// screens/LoginScreen.js
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -14,18 +13,25 @@ import {
   Dimensions
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from '../firebase/config';
+import { 
+  signInWithEmailAndPassword, 
+  sendPasswordResetEmail, 
+  createUserWithEmailAndPassword 
+} from 'firebase/auth';
+import { doc, setDoc } from 'firebase/firestore';
+import { auth, db } from '../firebase/config';
 
 const { width, height } = Dimensions.get('window');
 
-export default function LoginScreen() {
-  const [currentScreen, setCurrentScreen] = useState(0); // 0=loading, 1=welcome, 2=login
+export default function LoginScreen({ navigation }) {
+  const [currentScreen, setCurrentScreen] = useState(0);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [resetLoading, setResetLoading] = useState(false);
+  const [isSignUp, setIsSignUp] = useState(false);
   const dotAnimation = new Animated.Value(0);
 
   // Animation for loading dots
@@ -54,32 +60,105 @@ export default function LoginScreen() {
     }
   }, [currentScreen]);
 
-  const handleLogin = async () => {
-    // Empty field validation
+  const createUserDocument = async (user) => {
+    try {
+      const userData = {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.email.split('@')[0],
+        role: 'field-staff',
+        createdAt: new Date(),
+        lastLogin: new Date(),
+        status: 'active'
+      };
+      
+      await setDoc(doc(db, 'users', user.uid), userData);
+      console.log('User document created successfully');
+    } catch (error) {
+      console.error('Error creating user document:', error);
+      throw error;
+    }
+  };
+
+  const handleAuth = async () => {
     if (!email.trim() || !password.trim()) {
       Alert.alert('Validation Error', 'Please enter both email and password');
       return;
     }
 
+    if (isSignUp && password !== confirmPassword) {
+      Alert.alert('Validation Error', 'Passwords do not match');
+      return;
+    }
+
+    if (isSignUp && password.length < 6) {
+      Alert.alert('Validation Error', 'Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-    } catch (error) {
-      // Invalid credentials feedback
-      if (error.code === 'auth/invalid-credential' || 
-          error.code === 'auth/invalid-email' || 
-          error.code === 'auth/wrong-password') {
-        Alert.alert('Login Error', 'Invalid email or password');
+      if (isSignUp) {
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        await createUserDocument(userCredential.user);
+        Alert.alert('Success', 'Account created successfully!', [
+          { text: 'OK', onPress: () => setIsSignUp(false) }
+        ]);
       } else {
-        Alert.alert('Login Error', error.message);
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          lastLogin: new Date()
+        }, { merge: true });
       }
+    } catch (error) {
+      handleAuthError(error);
     } finally {
       setLoading(false);
     }
   };
 
+  const handleAuthError = (error) => {
+    let errorMessage = 'Authentication failed. Please try again.';
+    let suggestSignUp = false;
+    
+    switch(error.code) {
+      case 'auth/email-already-in-use':
+        errorMessage = 'This email is already registered. Please log in.';
+        suggestSignUp = true;
+        break;
+      case 'auth/invalid-email':
+        errorMessage = 'Please enter a valid email address';
+        break;
+      case 'auth/weak-password':
+        errorMessage = 'Password should be at least 6 characters';
+        break;
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+        errorMessage = 'Invalid email or password';
+        break;
+      case 'auth/too-many-requests':
+        errorMessage = 'Too many attempts. Please try again later.';
+        break;
+      case 'auth/user-not-found':
+        errorMessage = 'No account found with this email. Would you like to sign up instead?';
+        suggestSignUp = true;
+        break;
+      default:
+        errorMessage = error.message;
+    }
+    
+    const buttons = [{ text: 'OK' }];
+    if (suggestSignUp && !isSignUp) {
+      buttons.push({
+        text: 'Sign Up',
+        onPress: () => setIsSignUp(true)
+      });
+    }
+    
+    Alert.alert(isSignUp ? 'Sign Up Error' : 'Login Error', errorMessage, buttons);
+  };
+
   const handleForgotPassword = async () => {
-    // Forgot password validation
     if (!email.trim()) {
       Alert.alert('Validation Error', 'Please enter your email to proceed');
       return;
@@ -88,12 +167,30 @@ export default function LoginScreen() {
     setResetLoading(true);
     try {
       await sendPasswordResetEmail(auth, email);
-      Alert.alert('Reset Email Sent', `Password reset link sent to ${email}`);
+      Alert.alert(
+        'Reset Email Sent', 
+        `Password reset link sent to ${email}. Please check your inbox.`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              setEmail('');
+              setPassword('');
+            }
+          }
+        ]
+      );
     } catch (error) {
       Alert.alert('Error', error.message);
     } finally {
       setResetLoading(false);
     }
+  };
+
+  const toggleAuthMode = () => {
+    setIsSignUp(!isSignUp);
+    setPassword('');
+    setConfirmPassword('');
   };
 
   const renderLoadingScreen = () => (
@@ -157,7 +254,7 @@ export default function LoginScreen() {
     </View>
   );
 
-  const renderLoginScreen = () => (
+  const renderAuthScreen = () => (
     <View style={[styles.container, styles.loginContainer]}>
       <Image 
         source={require('../assets/LOGO.png')}
@@ -165,11 +262,13 @@ export default function LoginScreen() {
       />
       
       <View style={styles.loginTitleContainer}>
-        <Text style={styles.loginTitle}>Log In</Text>
+        <Text style={styles.loginTitle}>{isSignUp ? 'Sign Up' : 'Log In'}</Text>
       </View>
       
       <View style={styles.welcomeBackContainer}>
-        <Text style={styles.welcomeBackText}>Welcome back! Let's reconnect.</Text>
+        <Text style={styles.welcomeBackText}>
+          {isSignUp ? 'Create a new account to get started' : 'Welcome back! Let\'s reconnect.'}
+        </Text>
       </View>
       
       <View style={[styles.inputContainer, { top: 230 }]}>
@@ -203,32 +302,71 @@ export default function LoginScreen() {
         />
       </View>
 
-      <View style={styles.forgotPasswordContainer}>
-        <TouchableOpacity
-          onPress={handleForgotPassword}
-          disabled={resetLoading || loading}
-        >
-          {resetLoading ? (
-            <ActivityIndicator size="small" color="#FF0000" />
-          ) : (
-            <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
-          )}
-        </TouchableOpacity>
-      </View>
+      {isSignUp && (
+        <View style={[styles.inputContainer, { top: 350 }]}>
+          <TextInput
+            style={styles.input}
+            placeholder="Confirm Password"
+            placeholderTextColor="#999"
+            secureTextEntry={!showPassword}
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+          />
+          <Ionicons 
+            name={showPassword ? 'eye-off-outline' : 'eye-outline'} 
+            size={20} 
+            color="#999"
+            style={styles.inputIcon}
+            onPress={() => setShowPassword(!showPassword)}
+          />
+        </View>
+      )}
+
+      {!isSignUp && (
+        <View style={styles.forgotPasswordContainer}>
+          <TouchableOpacity
+            onPress={handleForgotPassword}
+            disabled={resetLoading || loading}
+          >
+            {resetLoading ? (
+              <ActivityIndicator size="small" color="#FF0000" />
+            ) : (
+              <Text style={styles.forgotPasswordText}>Forgot your password?</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
 
       <TouchableOpacity 
         style={styles.loginScreenButton}
-        onPress={handleLogin}
+        onPress={handleAuth}
         disabled={loading || resetLoading}
       >
         {loading ? (
           <ActivityIndicator color="#fff" />
         ) : (
           <View style={styles.buttonContent}>
-            <Ionicons name="log-in" size={22} color="#fff" style={styles.buttonIcon} />
-            <Text style={styles.loginButtonText}>Log In</Text>
+            <Ionicons 
+              name={isSignUp ? 'person-add' : 'log-in'} 
+              size={22} 
+              color="#fff" 
+              style={styles.buttonIcon} 
+            />
+            <Text style={styles.loginButtonText}>
+              {isSignUp ? 'Sign Up' : 'Log In'}
+            </Text>
           </View>
         )}
+      </TouchableOpacity>
+
+      <TouchableOpacity 
+        style={styles.toggleAuthButton}
+        onPress={toggleAuthMode}
+        disabled={loading}
+      >
+        <Text style={styles.toggleAuthText}>
+          {isSignUp ? 'Already have an account? Log In' : 'Don\'t have an account? Sign Up'}
+        </Text>
       </TouchableOpacity>
     </View>
   );
@@ -237,7 +375,7 @@ export default function LoginScreen() {
     <>
       {currentScreen === 0 && renderLoadingScreen()}
       {currentScreen === 1 && renderWelcomeScreen()}
-      {currentScreen === 2 && renderLoginScreen()}
+      {currentScreen === 2 && renderAuthScreen()}
     </>
   );
 }
@@ -405,7 +543,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderWidth: 1,
     borderColor: '#ddd',
-    top: height * 0.6,
   },
   input: {
     flex: 1,
@@ -437,7 +574,7 @@ const styles = StyleSheet.create({
     width: width * 0.9,
     height: 60,
     position: 'absolute',
-    top: height * 0.82,
+    top: height * 0.77,
     alignSelf: 'center',
     borderRadius: 10,
     justifyContent: 'center',
@@ -455,5 +592,15 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  toggleAuthButton: {
+    position: 'absolute',
+    top: height * 0.9,
+    alignSelf: 'center',
+  },
+  toggleAuthText: {
+    color: '#007bff',
+    fontWeight: '500',
+    fontSize: 14,
   },
 });
