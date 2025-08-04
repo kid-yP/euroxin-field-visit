@@ -1,3 +1,5 @@
+
+//This page is not used anymore!
 import React, { useEffect, useState, useRef } from 'react';
 import {
   View,
@@ -370,5 +372,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
 });
-//still need an update
+
 export default MapScreen;
