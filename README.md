@@ -1,4 +1,4 @@
-📍 Euroxin Field Visit App 
+📍 Euroxin Field Visit App
 
 A mobile-first platform designed to streamline the planning, tracking, and reporting of field visits—perfect for marketers, supervisors, and admins in fast-moving field environments.
 
