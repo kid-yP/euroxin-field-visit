@@ -18,7 +18,7 @@ import {
   sendPasswordResetEmail, 
   createUserWithEmailAndPassword 
 } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 
 const { width, height } = Dimensions.get('window');
@@ -62,18 +62,21 @@ export default function LoginScreen({ navigation }) {
 
   const createUserDocument = async (user) => {
     try {
+      // Default role is 'field-worker' unless email matches team-leader pattern
+      const isTeamLeader = email.endsWith('@euroxin-leaders.com');
       const userData = {
         uid: user.uid,
         email: user.email,
         displayName: user.email.split('@')[0],
-        role: 'field-staff',
+        role: isTeamLeader ? 'team-leader' : 'field-worker',
         createdAt: new Date(),
         lastLogin: new Date(),
-        status: 'active'
+        status: 'active',
+        assignedVisits: [] // Initialize empty array for assigned visits
       };
       
       await setDoc(doc(db, 'users', user.uid), userData);
-      console.log('User document created successfully');
+      console.log('User document created with role:', userData.role);
     } catch (error) {
       console.error('Error creating user document:', error);
       throw error;
@@ -109,6 +112,13 @@ export default function LoginScreen({ navigation }) {
         await setDoc(doc(db, 'users', userCredential.user.uid), {
           lastLogin: new Date()
         }, { merge: true });
+        
+        // Check user role after login
+        const userDoc = await getDoc(doc(db, 'users', userCredential.user.uid));
+        const userRole = userDoc.data()?.role || 'field-worker';
+        
+        console.log('User logged in with role:', userRole);
+        // Navigation based on role can be handled in App.js or navigation flow
       }
     } catch (error) {
       handleAuthError(error);
