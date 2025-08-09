@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,14 @@ import {
   TouchableOpacity,
   ScrollView,
   Alert,
-  Image,
   StyleSheet,
   ActivityIndicator,
   Linking,
 } from 'react-native';
-import { db, auth, storage } from '../firebase/config';
-import { collection, addDoc, Timestamp, doc, updateDoc } from 'firebase/firestore';
-import * as ImagePicker from 'expo-image-picker';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { db, auth } from '../firebase/config';
+import { collection, addDoc, doc, updateDoc, getDocs, query, where, increment } from 'firebase/firestore';
+import { Timestamp } from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 
@@ -28,103 +26,47 @@ const productOptions = [
 ];
 
 export default function VisitDetailsScreen({ route, navigation }) {
-  const { visit = {}, poi = {} } = route.params || {};
+  const { visit = {} } = route.params || {};
   
-  // Consolidated POI data with proper fallbacks
-  const poiData = {
-    name: poi?.name || visit?.poiName || 'Unnamed POI',
-    address: poi?.address || visit?.poiAddress || null,
-    contact: poi?.contact || visit?.poiContact || null,
-    type: poi?.type || visit?.poiType || 'pharmacy'
-  };
-
   const [contactName, setContactName] = useState(visit?.contactName || '');
   const [contactPhone, setContactPhone] = useState(visit?.contactPhone || '');
   const [isFamiliar, setIsFamiliar] = useState(visit?.isFamiliar ?? null);
   const [interested, setInterested] = useState(visit?.interested ?? null);
   const [selectedProducts, setSelectedProducts] = useState(visit?.products || []);
   const [notes, setNotes] = useState(visit?.notes || '');
-  const [image, setImage] = useState(visit?.image || null);
-  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [indexError, setIndexError] = useState(false);
   const [visitDate, setVisitDate] = useState(visit?.date ? visit.date.toDate() : new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [fieldWorkers, setFieldWorkers] = useState([]);
+  const [selectedWorker, setSelectedWorker] = useState(visit?.assignedWorker || '');
+  const [showWorkerDropdown, setShowWorkerDropdown] = useState(false);
+  const [poiLocation, setPoiLocation] = useState(visit?.poiLocation || '');
+  const [poiAddress, setPoiAddress] = useState(visit?.poiAddress || '');
 
-  const getLocationIcon = (type) => {
-    switch(type) {
-      case 'hospital': return 'local-hospital';
-      case 'clinic': return 'medical-services';
-      default: return 'local-pharmacy';
-    }
-  };
+  useEffect(() => {
+    const fetchFieldWorkers = async () => {
+      try {
+        const q = query(collection(db, 'users'), where('role', '==', 'field-worker'));
+        const querySnapshot = await getDocs(q);
+        const workers = querySnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setFieldWorkers(workers);
+      } catch (error) {
+        console.error('Error fetching field workers:', error);
+      }
+    };
 
-  const getLocationColor = (type) => {
-    switch(type) {
-      case 'hospital': return '#FF3B30';
-      case 'clinic': return '#34C759';
-      default: return '#007AFF';
-    }
-  };
+    fetchFieldWorkers();
+  }, []);
 
   const toggleProduct = (product) => {
     if (selectedProducts.includes(product)) {
       setSelectedProducts(selectedProducts.filter((p) => p !== product));
     } else {
       setSelectedProducts([...selectedProducts, product]);
-    }
-  };
-
-  const pickImage = async () => {
-    try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (status !== 'granted') {
-        Alert.alert('Permission required', 'We need gallery access to upload photos');
-        return;
-      }
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeImages,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.7,
-      });
-
-      if (!result.canceled && result.assets && result.assets[0]) {
-        setImage(result.assets[0].uri);
-      }
-    } catch (error) {
-      console.error('Image picker error:', error);
-      Alert.alert('Error', 'Failed to pick image');
-    }
-  };
-
-  const uploadImage = async (uri) => {
-    if (!uri) return null;
-    
-    try {
-      setUploading(true);
-      
-      const userId = auth.currentUser?.uid;
-      if (!userId) {
-        throw new Error('User not authenticated');
-      }
-
-      const filename = uri.substring(uri.lastIndexOf('/') + 1);
-      const storageRef = ref(storage, `visits/${userId}/${Date.now()}_${filename}`);
-
-      const response = await fetch(uri);
-      const blob = await response.blob();
-
-      await uploadBytes(storageRef, blob);
-      const downloadURL = await getDownloadURL(storageRef);
-      
-      return downloadURL;
-    } catch (error) {
-      console.error('Upload error:', error);
-      throw error;
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -135,8 +77,21 @@ export default function VisitDetailsScreen({ route, navigation }) {
     });
   };
 
-  const handleSaveAndCheckoutLater = async () => {
-    if (!contactName || !contactPhone || isFamiliar === null || interested === null) {
+  const updateAssignedVisitsCount = async (workerId) => {
+    try {
+      const assignedVisitsRef = doc(db, 'assignedVisits', workerId);
+      await updateDoc(assignedVisitsRef, {
+        count: increment(1),
+        lastAssigned: Timestamp.now()
+      });
+    } catch (error) {
+      console.error('Error updating assigned visits count:', error);
+      // This error won't block the visit assignment, just log it
+    }
+  };
+
+  const handleAssignVisit = async () => {
+    if (!poiLocation || !selectedWorker || isFamiliar === null || interested === null || !contactName || !contactPhone) {
       return Alert.alert('Missing Fields', 'Please complete all required fields.');
     }
 
@@ -144,39 +99,42 @@ export default function VisitDetailsScreen({ route, navigation }) {
       setSubmitting(true);
       setIndexError(false);
 
-      let imageUrl = image;
-      if (image && !image.startsWith('https://')) {
-        imageUrl = await uploadImage(image);
+      const selectedWorkerData = fieldWorkers.find(w => w.displayName === selectedWorker);
+      if (!selectedWorkerData) {
+        throw new Error('Selected worker data not found');
       }
 
       const visitData = {
+        poiLocation,
+        poiAddress,
         contactName,
         contactPhone,
         isFamiliar,
         interested,
         products: selectedProducts,
         notes,
-        image: imageUrl || null,
-        status: 'pending',
+        status: 'assigned',
         timestamp: Timestamp.now(),
         date: Timestamp.fromDate(visitDate),
-        poiName: poiData.name,
-        poiAddress: poiData.address,
-        poiContact: poiData.contact,
-        poiType: poiData.type
+        assignedWorker: selectedWorker,
+        assignedWorkerId: selectedWorkerData.id,
+        userId: auth.currentUser?.uid
       };
 
       try {
         if (visit?.id) {
           await updateDoc(doc(db, 'visits', visit.id), visitData);
-          Alert.alert('Success', 'Visit saved successfully!');
+          Alert.alert('Success', 'Visit updated successfully!');
         } else {
           await addDoc(collection(db, 'visits'), {
             ...visitData,
             userId: auth.currentUser?.uid,
           });
+          // Update assigned visits count for the worker
+          await updateAssignedVisitsCount(selectedWorkerData.id);
           Alert.alert('Success', 'New visit saved successfully!');
         }
+        
         navigation.reset({
           index: 0,
           routes: [{ name: 'Tabs' }]
@@ -186,16 +144,10 @@ export default function VisitDetailsScreen({ route, navigation }) {
           setIndexError(true);
           Alert.alert(
             'Index Required',
-            'The database needs to create an index for this query. This happens automatically and should be ready in 2-5 minutes.',
+            'The database needs to create an index for this query.',
             [
-              { 
-                text: 'Create Index Now', 
-                onPress: handleCreateIndex 
-              },
-              { 
-                text: 'OK', 
-                onPress: () => navigation.goBack() 
-              }
+              { text: 'Create Index Now', onPress: handleCreateIndex },
+              { text: 'OK', onPress: () => navigation.goBack() }
             ]
           );
         } else {
@@ -203,94 +155,8 @@ export default function VisitDetailsScreen({ route, navigation }) {
         }
       }
     } catch (error) {
-      console.error('Submission error:', error);
-      Alert.alert(
-        'Error', 
-        error.message || 'Failed to save visit. Please try again.'
-      );
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleProceedToCheckout = async () => {
-    if (!contactName || !contactPhone || isFamiliar === null || interested === null) {
-      return Alert.alert('Missing Fields', 'Please complete all required fields.');
-    }
-
-    try {
-      setSubmitting(true);
-      setIndexError(false);
-
-      let imageUrl = image;
-      if (image && !image.startsWith('https://')) {
-        imageUrl = await uploadImage(image);
-      }
-
-      const visitData = {
-        contactName,
-        contactPhone,
-        isFamiliar,
-        interested,
-        products: selectedProducts,
-        notes,
-        image: imageUrl || null,
-        status: 'checked-in',
-        timestamp: Timestamp.now(),
-        checkInTime: Timestamp.now(),
-        date: Timestamp.fromDate(visitDate),
-        poiName: poiData.name,
-        poiAddress: poiData.address,
-        poiContact: poiData.contact,
-        poiType: poiData.type
-      };
-
-      try {
-        let visitId;
-        if (visit?.id) {
-          await updateDoc(doc(db, 'visits', visit.id), visitData);
-          visitId = visit.id;
-        } else {
-          const docRef = await addDoc(collection(db, 'visits'), {
-            ...visitData,
-            userId: auth.currentUser?.uid,
-          });
-          visitId = docRef.id;
-        }
-
-        navigation.navigate('Checkout', { 
-          visit: {
-            id: visitId,
-            ...visitData
-          } 
-        });
-      } catch (dbError) {
-        if (dbError.code === 'failed-precondition') {
-          setIndexError(true);
-          Alert.alert(
-            'Index Required',
-            'The database needs to create an index for this query. This happens automatically and should be ready in 2-5 minutes.',
-            [
-              { 
-                text: 'Create Index Now', 
-                onPress: handleCreateIndex 
-              },
-              { 
-                text: 'OK', 
-                onPress: () => navigation.goBack() 
-              }
-            ]
-          );
-        } else {
-          throw dbError;
-        }
-      }
-    } catch (error) {
-      console.error('Submission error:', error);
-      Alert.alert(
-        'Error', 
-        error.message || 'Failed to save visit. Please try again.'
-      );
+      console.error('Error:', error);
+      Alert.alert('Error', error.message || 'Failed to assign visit.');
     } finally {
       setSubmitting(false);
     }
@@ -308,40 +174,80 @@ export default function VisitDetailsScreen({ route, navigation }) {
           </View>
         )}
 
-        {/* POI Information Card */}
-        <View style={styles.poiCard}>
-          <View style={styles.poiHeader}>
-            <View style={[
-              styles.poiIconContainer,
-              { backgroundColor: getLocationColor(poiData.type) }
-            ]}>
-              <MaterialIcons 
-                name={getLocationIcon(poiData.type)} 
-                size={24} 
-                color="white" 
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Assign Field Worker *</Text>
+          <View style={styles.dropdownContainer}>
+            <TouchableOpacity 
+              style={styles.dropdownHeader}
+              onPress={() => setShowWorkerDropdown(!showWorkerDropdown)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.dropdownHeaderContent}>
+                <Ionicons name="person-outline" size={20} color="#6B778C" style={styles.dropdownIcon} />
+                <Text style={[styles.dropdownText, !selectedWorker && styles.placeholderText]}>
+                  {selectedWorker || 'Select a field worker'}
+                </Text>
+              </View>
+              <Ionicons 
+                name={showWorkerDropdown ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color="#6B778C" 
               />
-            </View>
-            <Text style={styles.poiName}>{poiData.name}</Text>
+            </TouchableOpacity>
+
+            {showWorkerDropdown && fieldWorkers.length > 0 && (
+              <View style={styles.dropdownOptions}>
+                <ScrollView 
+                  style={styles.dropdownScroll}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                >
+                  {fieldWorkers.map(worker => (
+                    <TouchableOpacity
+                      key={worker.id}
+                      style={[
+                        styles.dropdownOption,
+                        selectedWorker === worker.displayName && styles.dropdownOptionSelected
+                      ]}
+                      onPress={() => {
+                        setSelectedWorker(worker.displayName);
+                        setShowWorkerDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownOptionText}>{worker.displayName}</Text>
+                      {selectedWorker === worker.displayName && (
+                        <Ionicons name="checkmark" size={18} color="#007bff" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
           </View>
-          
-          {poiData.address && (
-            <View style={styles.poiInfoRow}>
-              <Ionicons name="location" size={18} color="#6B778C" />
-              <Text style={styles.poiInfoText}>{poiData.address}</Text>
-            </View>
-          )}
-          
-          {poiData.contact && (
-            <View style={styles.poiInfoRow}>
-              <Ionicons name="call" size={18} color="#6B778C" />
-              <Text style={styles.poiInfoText}>{poiData.contact}</Text>
-            </View>
-          )}
         </View>
 
-        {/* Contact Information Card */}
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Contact Information</Text>
+          <Text style={styles.sectionTitle}>Location Details *</Text>
+          
+          <TextInput
+            placeholder="POI Location Name *"
+            placeholderTextColor="#6B778C"
+            value={poiLocation}
+            onChangeText={setPoiLocation}
+            style={styles.input}
+          />
+          
+          <TextInput
+            placeholder="POI Address"
+            placeholderTextColor="#6B778C"
+            value={poiAddress}
+            onChangeText={setPoiAddress}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>POI Contact Information *</Text>
           
           <TextInput
             placeholder="Contact Name *"
@@ -361,7 +267,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
           />
         </View>
 
-        {/* Visit Details Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Visit Details</Text>
           
@@ -424,7 +329,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Products Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Products of Interest</Text>
           <View style={styles.chipContainer}>
@@ -442,7 +346,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
           </View>
         </View>
 
-        {/* Notes Card */}
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Notes</Text>
           <TextInput
@@ -454,61 +357,19 @@ export default function VisitDetailsScreen({ route, navigation }) {
             style={[styles.input, styles.notesInput]}
           />
         </View>
-
-        {/* Attachments Card */}
-        <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Attachments</Text>
-          <TouchableOpacity 
-            onPress={pickImage} 
-            style={styles.photoButton} 
-            disabled={uploading}
-          >
-            <Ionicons 
-              name={image ? 'checkmark-circle' : 'camera'} 
-              size={20} 
-              color="white" 
-            />
-            <Text style={styles.photoButtonText}>
-              {uploading ? 'Uploading...' : image ? 'Photo Added' : 'Add Photo'}
-            </Text>
-          </TouchableOpacity>
-          
-          {image && (
-            <Image 
-              source={{ uri: image }} 
-              style={styles.imagePreview} 
-              resizeMode="cover"
-            />
-          )}
-        </View>
       </ScrollView>
 
-      {/* Action Buttons */}
-      <View style={styles.buttonContainer}>
+      <View style={styles.singleButtonContainer}>
         <TouchableOpacity
-          onPress={handleSaveAndCheckoutLater}
-          style={[styles.actionButton, styles.saveButton]}
-          disabled={submitting || uploading}
+          onPress={handleAssignVisit}
+          style={styles.assignButton}
+          disabled={submitting}
         >
           {submitting ? (
             <ActivityIndicator color="white" />
           ) : (
-            <Text style={styles.actionButtonText}>
-              SAVE AND CHECK OUT LATER
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={handleProceedToCheckout}
-          style={[styles.actionButton, styles.checkoutButton]}
-          disabled={submitting || uploading}
-        >
-          {submitting ? (
-            <ActivityIndicator color="white" />
-          ) : (
-            <Text style={styles.actionButtonText}>
-              PROCEED TO CHECK OUT
+            <Text style={styles.assignButtonText}>
+              ASSIGN VISIT
             </Text>
           )}
         </TouchableOpacity>
@@ -517,6 +378,7 @@ export default function VisitDetailsScreen({ route, navigation }) {
   );
 }
 
+// ... (keep all your existing styles exactly the same)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -524,46 +386,7 @@ const styles = StyleSheet.create({
   },
   scrollContainer: {
     padding: 16,
-    paddingBottom: 120,
-  },
-  poiCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  poiHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  poiIconContainer: {
-    borderRadius: 12,
-    padding: 8,
-    marginRight: 12,
-  },
-  poiName: {
-    fontFamily: 'Poppins-SemiBold',
-    fontSize: 18,
-    color: '#172B4D',
-    flex: 1,
-  },
-  poiInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  poiInfoText: {
-    fontFamily: 'Poppins-Regular',
-    fontSize: 14,
-    color: '#6B778C',
-    marginLeft: 8,
-    flex: 1,
+    paddingBottom: 100,
   },
   card: {
     backgroundColor: 'white',
@@ -592,6 +415,71 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#172B4D',
     backgroundColor: '#FAFAFA',
+  },
+  dropdownContainer: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 16,
+    overflow: 'hidden',
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    paddingVertical: 16,
+  },
+  dropdownHeaderContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  dropdownIcon: {
+    marginRight: 12,
+  },
+  dropdownText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#172B4D',
+    flex: 1,
+  },
+  placeholderText: {
+    color: '#6B778C',
+  },
+  dropdownOptions: {
+    maxHeight: 200,
+    borderTopWidth: 1,
+    borderTopColor: '#E0E0E0',
+  },
+  dropdownScroll: {
+    maxHeight: 200,
+  },
+  dropdownOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  dropdownOptionSelected: {
+    backgroundColor: '#F5F9FF',
+  },
+  dropdownOptionText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#172B4D',
+    flex: 1,
+  },
+  noWorkersText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#6B778C',
+    textAlign: 'center',
+    padding: 16,
   },
   dateInput: {
     borderWidth: 1,
@@ -673,36 +561,14 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'white',
   },
-  photoButton: {
-    backgroundColor: '#007bff',
-    padding: 14,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 16,
-  },
-  photoButtonText: {
-    color: 'white',
-    fontFamily: 'Poppins-SemiBold',
-    fontSize: 15,
-    marginLeft: 8,
-  },
-  imagePreview: {
-    width: '100%',
-    height: 200,
-    borderRadius: 10,
-  },
-  buttonContainer: {
+  singleButtonContainer: {
     position: 'absolute',
     bottom: 20,
     left: 20,
     right: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
   },
-  actionButton: {
-    flex: 1,
+  assignButton: {
+    backgroundColor: '#007bff',
     padding: 16,
     borderRadius: 10,
     alignItems: 'center',
@@ -712,18 +578,10 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  saveButton: {
-    backgroundColor: '#6c757d',
-    marginRight: 8,
-  },
-  checkoutButton: {
-    backgroundColor: '#28a745',
-    marginLeft: 8,
-  },
-  actionButtonText: {
+  assignButtonText: {
     color: 'white',
     fontFamily: 'Poppins-SemiBold',
-    fontSize: 14,
+    fontSize: 16,
     textAlign: 'center',
   },
   indexWarning: {
