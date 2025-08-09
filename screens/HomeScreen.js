@@ -9,21 +9,22 @@ import {
   Dimensions,
   RefreshControl,
   ActivityIndicator,
-  Alert,
-  Linking
+  Alert
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, Timestamp, doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
+import { useAuth } from '../firebase/useAuth';
 import ExpandableSection from '../components/ExpandableSection';
 
 const { width } = Dimensions.get('window');
 
 export default function HomeScreen({ navigation }) {
+  const { user, loading: authLoading } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [dataLoading, setDataLoading] = useState(true);
   const [todayVisits, setTodayVisits] = useState([]);
   const [weekVisits, setWeekVisits] = useState([]);
   const [monthVisits, setMonthVisits] = useState([]);
@@ -55,12 +56,24 @@ export default function HomeScreen({ navigation }) {
     }
   ]);
 
+  // Safe document update function
+  const updateAssignedVisitsCount = async (userId, count) => {
+    try {
+      const assignedVisitsRef = doc(db, 'assignedVisits', userId);
+      await setDoc(assignedVisitsRef, {
+        count: count,
+        userId: userId,
+        lastUpdated: new Date()
+      }, { merge: true }); // Merge with existing document if it exists
+    } catch (error) {
+      console.error("Error updating assigned visits count:", error);
+      Alert.alert("Error", "Could not update visit count");
+    }
+  };
+
   const fetchVisits = async () => {
     try {
-      const userId = auth.currentUser?.uid;
-      if (!userId) {
-        throw new Error("User not authenticated");
-      }
+      if (!user?.uid) return;
 
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -68,10 +81,15 @@ export default function HomeScreen({ navigation }) {
       const endOfDay = new Date(today);
       endOfDay.setHours(23, 59, 59, 999);
 
-      // Today's visits (exact date match)
+      // For field workers, only fetch visits assigned to them
+      const assignedWorkerFilter = user?.role === 'field-worker' 
+        ? where('assignedWorkerId', '==', user.uid)
+        : where('userId', '==', user.uid);
+
+      // Today's visits query
       const todayQuery = query(
         collection(db, 'visits'),
-        where('userId', '==', userId),
+        assignedWorkerFilter,
         where('date', '>=', Timestamp.fromDate(today)),
         where('date', '<=', Timestamp.fromDate(endOfDay)),
         orderBy('date', 'asc')
@@ -84,14 +102,19 @@ export default function HomeScreen({ navigation }) {
         bgColor: '#FFF5E6'
       }));
 
-      // Week's visits (from today to end of week)
+      // Update assigned visits count for field workers
+      if (user?.role === 'field-worker') {
+        await updateAssignedVisitsCount(user.uid, todayData.length);
+      }
+
+      // This week's visits query
       const endOfWeek = new Date(today);
       endOfWeek.setDate(today.getDate() + 6);
       endOfWeek.setHours(23, 59, 59, 999);
       
       const weekQuery = query(
         collection(db, 'visits'),
-        where('userId', '==', userId),
+        assignedWorkerFilter,
         where('date', '>=', Timestamp.fromDate(today)),
         where('date', '<=', Timestamp.fromDate(endOfWeek)),
         orderBy('date', 'asc')
@@ -104,7 +127,7 @@ export default function HomeScreen({ navigation }) {
         bgColor: '#E6F7FF'
       }));
 
-      // Month's visits (from today to end of month)
+      // This month's visits query
       const endOfMonth = new Date(today);
       endOfMonth.setMonth(today.getMonth() + 1);
       endOfMonth.setDate(0);
@@ -112,7 +135,7 @@ export default function HomeScreen({ navigation }) {
       
       const monthQuery = query(
         collection(db, 'visits'),
-        where('userId', '==', userId),
+        assignedWorkerFilter,
         where('date', '>=', Timestamp.fromDate(today)),
         where('date', '<=', Timestamp.fromDate(endOfMonth)),
         orderBy('date', 'asc'),
@@ -126,12 +149,11 @@ export default function HomeScreen({ navigation }) {
         bgColor: '#F0E6FF'
       }));
 
-      // Update state
+      // Update state with fetched data
       setTodayVisits(todayData);
       setWeekVisits(weekData);
       setMonthVisits(monthData);
       
-      // Update metrics
       setMetrics([
         { 
           ...metrics[0], 
@@ -167,18 +189,20 @@ export default function HomeScreen({ navigation }) {
         Alert.alert("Error", "Could not load visits data");
       }
     } finally {
-      setLoading(false);
+      setDataLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchVisits();
-  }, []);
+    if (!authLoading) {
+      fetchVisits();
+    }
+  }, [user, authLoading]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     fetchVisits().then(() => setRefreshing(false));
-  }, []);
+  }, [user]);
 
   const toggleMenu = () => {
     setShowMenu(!showMenu);
@@ -191,7 +215,7 @@ export default function HomeScreen({ navigation }) {
       onPress={() => navigation.navigate('VisitSummary', { visitId: visit.id })}
     >
       <View style={styles.visitInfo}>
-        <Text style={styles.visitName}>{visit.contactName || 'Unnamed Visitor'}</Text>
+        <Text style={styles.visitName}>{visit.assignedWorker || 'Unassigned Visit'}</Text>
         <View style={styles.timeContainer}>
           <Ionicons name="time-outline" size={14} color="#6B778C" style={styles.clockIcon} />
           <Text style={styles.visitTime}>
@@ -222,7 +246,7 @@ export default function HomeScreen({ navigation }) {
     </TouchableOpacity>
   );
 
-  if (loading) {
+  if (authLoading || dataLoading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator size="large" color="#007bff" />
@@ -244,19 +268,42 @@ export default function HomeScreen({ navigation }) {
             style={styles.logo}
           />
           <View style={styles.headerRight}>
-            <TouchableOpacity 
-              style={styles.addButton}
-              onPress={toggleMenu}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="add" size={28} color="white" style={styles.addIcon} />
-            </TouchableOpacity>
+            {user && (
+              <TouchableOpacity 
+                style={styles.addButton}
+                onPress={toggleMenu}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="add" size={28} color="white" style={styles.addIcon} />
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </LinearGradient>
 
-      {showMenu && (
+      {showMenu && user && (
         <View style={styles.dropdownMenu}>
+          {user.role === 'team-leader' && (
+            <>
+              <TouchableOpacity 
+                style={styles.menuItem}
+                onPress={() => {
+                  navigation.navigate('VisitDetails', { visit: {} });
+                  setShowMenu(false);
+                }}
+                activeOpacity={0.7}
+              >
+                <View style={styles.menuIconContainer}>
+                  <Ionicons name="add-circle-outline" size={20} color="#007bff" />
+                </View>
+                <Text style={styles.menuItemText}>New Visit</Text>
+                <Ionicons name="chevron-forward" size={18} color="#6B778C" />
+              </TouchableOpacity>
+              
+              <View style={styles.menuDivider} />
+            </>
+          )}
+          
           <TouchableOpacity 
             style={styles.menuItem}
             onPress={() => {
