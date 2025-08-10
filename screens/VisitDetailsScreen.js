@@ -17,14 +17,6 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { format } from 'date-fns';
 
-const productOptions = [
-  'Euroxin-69',
-  'Euroxin-X',
-  'Euroxin-Forte',
-  'Euroxin-Combo',
-  'Other',
-];
-
 export default function VisitDetailsScreen({ route, navigation }) {
   const { visit = {} } = route.params || {};
   
@@ -43,30 +35,98 @@ export default function VisitDetailsScreen({ route, navigation }) {
   const [showWorkerDropdown, setShowWorkerDropdown] = useState(false);
   const [poiLocation, setPoiLocation] = useState(visit?.poiLocation || '');
   const [poiAddress, setPoiAddress] = useState(visit?.poiAddress || '');
+  const [pois, setPois] = useState([]);
+  const [showPoiDropdown, setShowPoiDropdown] = useState(false);
+  const [selectedPoi, setSelectedPoi] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [otherProductNote, setOtherProductNote] = useState('');
 
   useEffect(() => {
-    const fetchFieldWorkers = async () => {
+    const fetchData = async () => {
       try {
-        const q = query(collection(db, 'users'), where('role', '==', 'field-worker'));
-        const querySnapshot = await getDocs(q);
-        const workers = querySnapshot.docs.map(doc => ({
+        // Fetch field workers
+        const workersQuery = query(collection(db, 'users'), where('role', '==', 'field-worker'));
+        const workersSnapshot = await getDocs(workersQuery);
+        const workersData = workersSnapshot.docs.map(doc => ({
           id: doc.id,
           ...doc.data()
         }));
-        setFieldWorkers(workers);
+        setFieldWorkers(workersData);
+
+        // Fetch POIs
+        const poisQuery = query(collection(db, 'pois'));
+        const poisSnapshot = await getDocs(poisQuery);
+        const poisData = poisSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setPois(poisData);
+        
+        // Set existing POI if editing
+        if (visit?.poiLocation) {
+          const existingPoi = poisData.find(p => 
+            p.name === visit.poiLocation || 
+            p.address === visit.poiAddress
+          );
+          if (existingPoi) {
+            setSelectedPoi(existingPoi);
+            setPoiLocation(existingPoi.name);
+            setPoiAddress(existingPoi.address);
+            // Set contact info if available in POI
+            if (existingPoi.contactName) setContactName(existingPoi.contactName);
+            if (existingPoi.contactPhone) setContactPhone(existingPoi.contactPhone);
+            // Handle contact object format if needed
+            if (typeof existingPoi.contact === 'object') {
+              if (existingPoi.contact.name) setContactName(existingPoi.contact.name);
+              if (existingPoi.contact.phone) setContactPhone(existingPoi.contact.phone);
+            }
+          }
+        }
+
+        // Fetch active products
+        const productsQuery = query(collection(db, 'products'), where('isActive', '==', true));
+        const productsSnapshot = await getDocs(productsQuery);
+        const productsData = productsSnapshot.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        }));
+        setProducts(productsData);
+
+        // Set existing products if editing
+        if (visit?.products) {
+          setSelectedProducts(visit.products);
+          // Check if there's a product not in our standard list (other product)
+          const otherProduct = visit.products.find(p => !productsData.some(prod => prod.name === p));
+          if (otherProduct) {
+            setOtherProductNote(otherProduct);
+            setSelectedProducts(prev => [...prev, 'Other']);
+          }
+        }
       } catch (error) {
-        console.error('Error fetching field workers:', error);
+        console.error('Error fetching data:', error);
+        Alert.alert('Error', 'Failed to load data');
       }
     };
 
-    fetchFieldWorkers();
+    fetchData();
   }, []);
 
   const toggleProduct = (product) => {
-    if (selectedProducts.includes(product)) {
-      setSelectedProducts(selectedProducts.filter((p) => p !== product));
+    if (product === 'Other') {
+      // Handle "Other" product selection
+      if (selectedProducts.includes('Other')) {
+        setSelectedProducts(selectedProducts.filter(p => p !== 'Other'));
+        setOtherProductNote('');
+      } else {
+        setSelectedProducts([...selectedProducts, 'Other']);
+      }
     } else {
-      setSelectedProducts([...selectedProducts, product]);
+      // Handle regular product selection
+      if (selectedProducts.includes(product)) {
+        setSelectedProducts(selectedProducts.filter(p => p !== product));
+      } else {
+        setSelectedProducts([...selectedProducts, product]);
+      }
     }
   };
 
@@ -86,7 +146,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
       });
     } catch (error) {
       console.error('Error updating assigned visits count:', error);
-      // This error won't block the visit assignment, just log it
     }
   };
 
@@ -104,6 +163,11 @@ export default function VisitDetailsScreen({ route, navigation }) {
         throw new Error('Selected worker data not found');
       }
 
+      // Prepare products array including the "Other" note if needed
+      const finalProducts = selectedProducts.includes('Other') && otherProductNote
+        ? [...selectedProducts.filter(p => p !== 'Other'), otherProductNote]
+        : selectedProducts;
+
       const visitData = {
         poiLocation,
         poiAddress,
@@ -111,7 +175,7 @@ export default function VisitDetailsScreen({ route, navigation }) {
         contactPhone,
         isFamiliar,
         interested,
-        products: selectedProducts,
+        products: finalProducts,
         notes,
         status: 'assigned',
         timestamp: Timestamp.now(),
@@ -130,7 +194,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
             ...visitData,
             userId: auth.currentUser?.uid,
           });
-          // Update assigned visits count for the worker
           await updateAssignedVisitsCount(selectedWorkerData.id);
           Alert.alert('Success', 'New visit saved successfully!');
         }
@@ -160,6 +223,55 @@ export default function VisitDetailsScreen({ route, navigation }) {
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const handlePoiSelect = (poi) => {
+    setSelectedPoi(poi);
+    setPoiLocation(poi.name);
+    setPoiAddress(poi.address || '');
+    // Automatically populate contact info from POI
+    if (typeof poi.contact === 'object') {
+      // Handle contact as object format
+      setContactName(poi.contact?.name || '');
+      setContactPhone(poi.contact?.phone || '');
+    } else {
+      // Handle direct contact fields
+      setContactName(poi.contactName || '');
+      setContactPhone(poi.contactPhone || '');
+    }
+    setShowPoiDropdown(false);
+  };
+
+  const renderProductChips = () => {
+    return (
+      <View style={styles.chipContainer}>
+        {products.map((product) => (
+          <TouchableOpacity
+            key={product.id}
+            style={[
+              styles.chip,
+              selectedProducts.includes(product.name) && styles.chipSelected
+            ]}
+            onPress={() => toggleProduct(product.name)}
+          >
+            <Text style={selectedProducts.includes(product.name) ? styles.chipTextSelected : styles.chipText}>
+              {product.name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        <TouchableOpacity
+          style={[
+            styles.chip,
+            selectedProducts.includes('Other') && styles.chipSelected
+          ]}
+          onPress={() => toggleProduct('Other')}
+        >
+          <Text style={selectedProducts.includes('Other') ? styles.chipTextSelected : styles.chipText}>
+            Other
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
   };
 
   return (
@@ -229,21 +341,73 @@ export default function VisitDetailsScreen({ route, navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Location Details *</Text>
           
-          <TextInput
-            placeholder="POI Location Name *"
-            placeholderTextColor="#6B778C"
-            value={poiLocation}
-            onChangeText={setPoiLocation}
-            style={styles.input}
-          />
+          <View style={styles.dropdownContainer}>
+            <TouchableOpacity 
+              style={styles.dropdownHeader}
+              onPress={() => setShowPoiDropdown(!showPoiDropdown)}
+              activeOpacity={0.7}
+            >
+              <View style={styles.dropdownHeaderContent}>
+                <Ionicons name="location-outline" size={20} color="#6B778C" style={styles.dropdownIcon} />
+                <Text style={[styles.dropdownText, !selectedPoi && styles.placeholderText]}>
+                  {selectedPoi?.name || 'Select a POI'}
+                </Text>
+              </View>
+              <Ionicons 
+                name={showPoiDropdown ? "chevron-up" : "chevron-down"} 
+                size={20} 
+                color="#6B778C" 
+              />
+            </TouchableOpacity>
+
+            {showPoiDropdown && pois.length > 0 && (
+              <View style={styles.dropdownOptions}>
+                <ScrollView 
+                  style={styles.dropdownScroll}
+                  nestedScrollEnabled
+                  showsVerticalScrollIndicator={false}
+                >
+                  {pois.map(poi => (
+                    <TouchableOpacity
+                      key={poi.id}
+                      style={[
+                        styles.dropdownOption,
+                        selectedPoi?.id === poi.id && styles.dropdownOptionSelected
+                      ]}
+                      onPress={() => handlePoiSelect(poi)}
+                    >
+                      <View style={styles.poiOptionContent}>
+                        <Text style={styles.dropdownOptionText}>{poi.name}</Text>
+                        {poi.address && (
+                          <Text style={styles.poiAddressText} numberOfLines={1}>
+                            {poi.address}
+                          </Text>
+                        )}
+                      </View>
+                      {selectedPoi?.id === poi.id && (
+                        <Ionicons name="checkmark" size={18} color="#007bff" />
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+          </View>
           
-          <TextInput
-            placeholder="POI Address"
-            placeholderTextColor="#6B778C"
-            value={poiAddress}
-            onChangeText={setPoiAddress}
-            style={styles.input}
-          />
+          <ScrollView 
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.addressScrollView}
+          >
+            <TextInput
+              placeholder="POI Address"
+              placeholderTextColor="#6B778C"
+              value={poiAddress}
+              onChangeText={setPoiAddress}
+              style={styles.addressInput}
+              editable={false}
+            />
+          </ScrollView>
         </View>
 
         <View style={styles.card}>
@@ -331,19 +495,17 @@ export default function VisitDetailsScreen({ route, navigation }) {
 
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Products of Interest</Text>
-          <View style={styles.chipContainer}>
-            {productOptions.map((product) => (
-              <TouchableOpacity
-                key={product}
-                style={[styles.chip, selectedProducts.includes(product) && styles.chipSelected]}
-                onPress={() => toggleProduct(product)}
-              >
-                <Text style={selectedProducts.includes(product) ? styles.chipTextSelected : styles.chipText}>
-                  {product}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {renderProductChips()}
+          
+          {selectedProducts.includes('Other') && (
+            <TextInput
+              placeholder="Please specify other product..."
+              placeholderTextColor="#6B778C"
+              value={otherProductNote}
+              onChangeText={setOtherProductNote}
+              style={[styles.input, { marginTop: 10 }]}
+            />
+          )}
         </View>
 
         <View style={styles.card}>
@@ -378,7 +540,6 @@ export default function VisitDetailsScreen({ route, navigation }) {
   );
 }
 
-// ... (keep all your existing styles exactly the same)
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -415,6 +576,21 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#172B4D',
     backgroundColor: '#FAFAFA',
+  },
+  addressScrollView: {
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
+    borderRadius: 10,
+    backgroundColor: '#FAFAFA',
+    marginBottom: 16,
+    maxHeight: 60,
+  },
+  addressInput: {
+    padding: 14,
+    fontFamily: 'Poppins-Regular',
+    fontSize: 15,
+    color: '#172B4D',
+    minWidth: '100%',
   },
   dropdownContainer: {
     borderWidth: 1,
@@ -473,6 +649,15 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#172B4D',
     flex: 1,
+  },
+  poiOptionContent: {
+    flex: 1,
+  },
+  poiAddressText: {
+    fontFamily: 'Poppins-Regular',
+    fontSize: 13,
+    color: '#6B778C',
+    marginTop: 4,
   },
   noWorkersText: {
     fontFamily: 'Poppins-Regular',
