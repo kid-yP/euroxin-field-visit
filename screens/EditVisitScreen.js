@@ -1,5 +1,3 @@
-
-//This page is not used anymore!
 import React, { useState, useEffect } from 'react';
 import {
   View,
