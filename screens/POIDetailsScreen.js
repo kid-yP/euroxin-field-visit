@@ -11,7 +11,7 @@ import {
   Image,
   RefreshControl
 } from 'react-native';
-import MapView, { Marker } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { 
@@ -311,6 +311,7 @@ const POIScreen = ({ navigation }) => {
           style={styles.map}
           initialRegion={region}
           region={region}
+          provider={PROVIDER_GOOGLE}
           loadingEnabled={true}
           onPress={() => {}}
         >
