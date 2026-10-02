@@ -1,107 +1,67 @@
-## 📍 Euroxin Field Visit App 
 
-A mobile-first platform designed to streamline the planning, tracking, and reporting of field visits—perfect for marketers, supervisors, and admins in fast-moving field environments.
+---
 
-🚀 Overview
-Euroxin Field Visit empowers field teams with:
+#  `Euroxin_FieldVisit_README.md`
 
-✅ Real-time GPS check-ins
+```markdown
+# Euroxin Field Visit — Mobile Field Data App
 
-📍 Interactive mapping
+Repo: :contentReference[oaicite:4]{index=4}
 
-📝 Visit logging
+**One-line**  
+An offline-first Expo React Native app for planning, tracking, and reporting field visits with GPS check-ins, exactly-once sync semantics, and supervisor admin integration.
 
-📊 Task management
+---
 
-📚 Knowledge resources
+## Tags
+`#reactnative` `#expo` `#firebase` `#offline-first` `#field-tech` `#gps` `#reliability`
 
-All built with React Native and powered by Firebase.
+---
 
-📱 Key Features
-🗺 Visit Planning & Tracking
-GPS check-in/out via POIs
+## Status
+Active maintenance for mobile client; backend integrations available (Firestore).
 
-Review past visits & outcomes
+**Sole developer contribution**  
+I was the sole developer for major parts of this app, including the offline sync queue, GPS check-in, and photo-upload retry logic.
 
-📌 Smart Attendance
-Auto check-out beyond 1km radius
+---
 
-Geofenced actions
+## Key features
 
-📄 Visit Summary & Logs
-Contact details
+- **GPS check-ins with POI support**  
+- **Offline queue** that caches visits locally and retries uploads when connectivity returns  
+- **Exactly-once sync** using idempotent submission tokens to avoid duplicates  
+- **Photo uploads with robust retry logic and resume support** (use Firebase Storage recommended)  
+- **Supervisor/admin integration:** consistent timestamps, server-side deduplication, and dashboard sync patterns  
+- **Task management & visit logs:** plan visits, mark outcomes, attach photos and notes
 
-Product interest
+---
 
-Comments & visit photos
+## Tech stack
 
-✅ Task Management
-Assign weekly/monthly tasks
+**Client:** Expo React Native (JavaScript / TypeScript)  
+**Backend / Data:** Firebase Auth, Firestore  
+**Storage:** Firebase Storage (photos & media)  
+**Maps:** Google Maps API  
+**Admin web:** Vercel
 
-Track progress in real time
+---
 
-🗂 Live Field Rep Map
-Supervisor module
+## Getting started (local dev)
 
-Scrollable map + activity feed
+**Prerequisites**
 
-🛒 Stock Monitoring
-Distributor/product listings
+- Node.js 18+  
+- Expo CLI (`npm install -g expo-cli`)  
+- Firebase account (for Firestore & Storage)  
+- Google Maps API key (for Map screens)
 
-Contact database
+**Quick start**
 
-📖 Knowledge Center
-Filterable training hub: Sales, Product, Compliance
-
-👤 User Profiles
-Role-based access
-
-Custom settings per user
-
-🛠 Tech Stack
-Layer	Tools Used
-Frontend	React Native
-Backend	Firebase (Auth, Firestore, Functions)
-Maps	Google Maps API
-Admin Web	React, Next.js, Firebase SDK
-Hosting	Vercel, Firebase Hosting
-👥 Target Users
-Field Marketers (Mobile-only)
-
-Supervisors (Mobile + Web Admin)
-
-Admins (Full access via Web Portal)
-
-🌐 Admin Web Modules
-Module	Description
-Dashboard	KPIs, charts, visit completion stats
-User Management	Assign region, roles, and permissions
-Task Scheduler	Plan recurring or one-off field tasks
-Live Tracking	Timeline view, GPS of field reps
-Stock Management	Distributor records and inventory oversight
-Knowledge Uploads	Add training PDFs and videos
-App Settings	Configure radius, branding, and languages
-🔐 Security
-🔒 Role-Based Access Control (RBAC)
-
-🧾 Audit logs
-
-🛡 Secure user session handling
-
-📦 Installation
-bash
-# Clone the repository
-git clone https://github.com/kid-yP/euroxin-field-visit.git
-
-# Navigate to the project
+```bash
+git clone <repo-url>
 cd euroxin-field-visit
-
-# Install dependencies
+cp .env.example .env
+# Edit .env with FIREBASE config and MAP keys
 npm install
-
-# Start the development server
-npm start
-🔗 Resources
-📥 Download Latest APK (replace with actual link)
-
-🧑‍💻 GitHub Repo
+npx expo start
